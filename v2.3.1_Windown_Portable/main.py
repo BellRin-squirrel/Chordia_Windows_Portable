@@ -44,7 +44,7 @@ else:
     BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
 # アプリバージョン定義
-appVersion = "v2.3.0"
+appVersion = "v2.3.1"
 
 LIBRARY_DIR = os.path.join(BASE_DIR, "library")
 MUSIC_DIR = os.path.join(LIBRARY_DIR, "music")
@@ -408,7 +408,10 @@ def auth_verify():
     os_ver = data.get('os')
     
     if code == AUTH_STATE["current_code"]:
-        # ★ 重複セッション防止: 同じIP/デバイスの既存セッションを削除
+        # ★ 認証成功時は即座に保留中のリクエストをクリア
+        AUTH_STATE["pending_request"] = None
+
+        # 重複セッション防止
         keys_to_del = [k for k, v in AUTH_STATE["sessions"].items() if v["ip"] == ip and v["device"] == device]
         for k in keys_to_del: del AUTH_STATE["sessions"][k]
 
@@ -418,6 +421,7 @@ def auth_verify():
             "last_access": time.time()
         }
         try:
+            # PC側のUIを成功状態で閉じる
             eel.notify_auth_success(device)()
         except: pass
         return jsonify({"status": "success", "api_key": api_key})
@@ -539,6 +543,7 @@ def auth_check():
 def respond_to_request(approve):
     """PCユーザーがポップアップで承認/拒否したとき"""
     if AUTH_STATE["pending_request"]:
+        # ステータスを更新するだけにする（コードの表示判断はJS側に任せる）
         AUTH_STATE["pending_request"]["status"] = "approved" if approve else "rejected"
     return True
 
