@@ -44,7 +44,7 @@ else:
     BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
 # アプリバージョン定義
-appVersion = "v2.3.1"
+appVersion = "v2.4.0"
 
 LIBRARY_DIR = os.path.join(BASE_DIR, "library")
 MUSIC_DIR = os.path.join(LIBRARY_DIR, "music")
@@ -57,6 +57,9 @@ PLAYLIST_MASTER_PATH = os.path.join(USERFILES_DIR, "playlist.json")
 LYRIC_DB_PATH = os.path.join(USERFILES_DIR, "lyric.json")
 SETTINGS_PATH = os.path.join(USERFILES_DIR, "settings.ini")
 CUSTOM_THEMES_PATH = os.path.join(USERFILES_DIR, "custom_themes.json")
+
+PLAY_COUNT_PATH = os.path.join(USERFILES_DIR, "played_times.json") # ★追加
+HISTORY_PATH = os.path.join(USERFILES_DIR, "history.json")       # ★追加
 
 # ★ BIN_DIR と 拡張機能の実行ファイルパス定義
 BIN_DIR = os.path.join(USERFILES_DIR, "bin")
@@ -82,9 +85,18 @@ AUTH_STATE = {
     "window_open": False,
     "current_code": None,
     "code_expires_at": 0,
-    "pending_request": None, # iPhoneからの接続待ち
+    "pending_request": None,
     "sessions": {}
 }
+# ミニプレイヤーとの同期用変数
+CURRENT_PLAYBACK_STATE = {
+    "song": None,
+    "isPlaying": False,
+    "currentTime": 0,
+    "duration": 0,
+    "queue": []
+}
+IS_MINI_PLAYER_OPEN = False
 
 @eel.expose
 def getAppVersion():
@@ -232,6 +244,51 @@ def get_lyrics(music_filename):
         return lyrics_data.get(filename_key, "")
     except Exception:
         return ""
+
+@eel.expose
+def record_playback(song_data):
+    """楽曲の再生開始を履歴と回数ファイルに記録する"""
+    if not song_data: return
+    
+    filename = os.path.basename(song_data.get('musicFilename', ''))
+    if not filename: return
+
+    # 1. 再生回数の更新 (played_times.json)
+    counts = {}
+    if os.path.exists(PLAY_COUNT_PATH):
+        try:
+            with open(PLAY_COUNT_PATH, 'r', encoding='utf-8') as f:
+                counts = json.load(f)
+        except: counts = {}
+    
+    counts[filename] = counts.get(filename, 0) + 1
+    
+    with open(PLAY_COUNT_PATH, 'w', encoding='utf-8') as f:
+        json.dump(counts, f, indent=4, ensure_ascii=False)
+
+    # 2. 再生履歴の追加 (history.json)
+    history = []
+    if os.path.exists(HISTORY_PATH):
+        try:
+            with open(HISTORY_PATH, 'r', encoding='utf-8') as f:
+                history = json.load(f)
+        except: history = []
+    
+    history.append({
+        "title": song_data.get('title'),
+        "artist": song_data.get('artist'),
+        "filename": filename,
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    })
+    
+    # 履歴は直近1000件程度に制限（肥大化防止）
+    if len(history) > 1000:
+        history = history[-1000:]
+
+    with open(HISTORY_PATH, 'w', encoding='utf-8') as f:
+        json.dump(history, f, indent=4, ensure_ascii=False)
+
+    return True
 
 @eel.expose
 def save_lyrics(music_filename, text):
@@ -725,6 +782,22 @@ def get_app_settings():
     except Exception as e:
         print(f"[DEBUG] get_app_settings Error: {e}")
         raise e
+
+@eel.expose
+def set_mini_player_open(status):
+    """ミニプレイヤーの起動状態を管理する"""
+    global IS_MINI_PLAYER_OPEN
+    IS_MINI_PLAYER_OPEN = status
+    if status:
+        print("ミニプレイヤーがアクティブになりました。")
+    return True
+
+@eel.expose
+def open_mini_player():
+    """ミニプレイヤーの起動許可を出す（実際の起動はJS側のwindow.openで行う）"""
+    # 二重起動の防止はJS側の window.open('...', 'ChordiaMiniPlayer') で
+    # 同名ウィンドウを再利用する仕組みに任せるのが最も確実で軽量です
+    return True
 
 @eel.expose
 def save_app_settings(s_dict):
@@ -1661,6 +1734,34 @@ def create_playlist(name, pl_type="normal"):
     return get_playlist_details(pl_id)
 
 @eel.expose
+def update_playback_state_bridge(state):
+    """メインウィンドウから状態を受け取り、保持する。ミニプレイヤーが開いていれば通知する"""
+    global CURRENT_PLAYBACK_STATE
+    CURRENT_PLAYBACK_STATE.update(state)
+    
+    if IS_MINI_PLAYER_OPEN:
+        try:
+            # 通信相手がいない場合に備えて、実行を投げっぱなしにする(非同期呼び出し)
+            # 相手がいない場合はエラーを無視して続行
+            eel.sync_from_python(CURRENT_PLAYBACK_STATE)()
+        except:
+            pass
+
+@eel.expose
+def get_playback_state_bridge():
+    """ミニプレイヤー起動時に現在の状態を取得する用"""
+    return CURRENT_PLAYBACK_STATE
+
+@eel.expose
+def control_from_mini(action, data=None):
+    """ミニプレイヤーからの操作をすべてのウィンドウ（メインウィンドウ）に転送する"""
+    try:
+        # すべてのウィンドウに対して receive_control_from_mini を実行
+        eel.receive_control_from_mini(action, data)()
+    except Exception as e:
+        print(f"Control Bridge Error: {e}")
+
+@eel.expose
 def update_playlist_by_id(pl_id, field, value):
     """プレイリストのマスター情報（名前、ソート順など）を更新、musicフィールドの場合は個別JSONを更新"""
     master = load_playlist_master()
@@ -2417,24 +2518,48 @@ def _match_advanced_search(item, conditions):
 
     return True
 
+def on_close(page, sockets):
+    """
+    ウィンドウが閉じられたときに呼ばれるコールバック。
+    """
+    global IS_MINI_PLAYER_OPEN
+    if 'mini_player.html' in page:
+        IS_MINI_PLAYER_OPEN = False
+
+    def monitor_websockets():
+        import time
+        for _ in range(10): 
+            time.sleep(0.5)
+            if eel._websockets: 
+                return 
+        import os
+        os._exit(0)
+
+    import threading
+    monitoring_thread = threading.Thread(target=monitor_websockets)
+    monitoring_thread.daemon = True
+    monitoring_thread.start()
+
 if __name__ == '__main__':
-    # Flaskサーバーをデーモンスレッドとして確実に起動
+    # Flaskサーバーをデーモンスレッドとして起動
     flask_thread = threading.Thread(target=run_flask)
-    flask_thread.daemon = True # メインプログラム終了時に一緒に終了させる
+    flask_thread.daemon = True 
     flask_thread.start()
     
     ensure_default_image()
     
-    # Eelの開始
+    # Eelの初期化
     eel.init(resource_path('app'))
     
     try:
-        # port=0 で空いているポートを自動選択させると衝突が減ります
-        eel.start('index.html', size=(1200, 900), port=0)
+        # shutdown_delayを長めに設定（Eel自体の終了保護）
+        # close_callbackで独自のスレッド監視を実行
+        eel.start('index.html', 
+                  size=(1200, 900), 
+                  port=0, 
+                  shutdown_delay=5.0, 
+                  close_callback=on_close)
     except (SystemExit, KeyboardInterrupt):
-        # アプリ終了時に Flask 側がリソースを解放するまで少し待つ処理など
-        pass
-    finally:
-        # 明示的にプログラムを終了させる
+        import os
         os._exit(0)
 

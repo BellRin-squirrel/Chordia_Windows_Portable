@@ -26,7 +26,7 @@
     <div class="container-fluid app-layout">
         <!-- ヘッダー -->
         <header class="app-header">
-            <!-- 左エリア: 戻るボタン -->
+            <!-- 左エリア: 戻るボタン & 音量調節 -->
             <div class="header-left">
                 <a href="index.html" class="back-link">
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="size-6">
@@ -34,6 +34,18 @@
                     </svg>
                     トップへ
                 </a>
+
+                <!-- 音量コントロール -->
+                <div class="header-volume-wrapper">
+                    <div class="volume-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M13.5 4.06c0-1.336-1.616-2.005-2.56-1.06l-4.5 4.5H4.508c-1.141 0-2.318.664-2.66 1.905A9.76 9.76 0 0 0 1.5 12c0 .898.121 1.768.35 2.595.341 1.24 1.518 1.905 2.659 1.905h1.93l4.5 4.5c.945.945 2.561.276 2.561-1.06V4.06z" />
+                        </svg>
+                    </div>
+                    <div class="volume-slider-container">
+                        <input type="range" id="volumeBar" class="volume-range" min="0" max="100" value="100">
+                    </div>
+                </div>
             </div>
 
             <!-- 中央エリア: ロゴ または プレイヤー情報 -->
@@ -91,10 +103,10 @@
                         </div>
                     </div>
 
-                    <!-- 歌詞表示ボタン -->
-                    <button id="btnOpenLyrics" class="btn-lyrics-toggle" title="歌詞を表示">
+                    <!-- 三点リーダーボタン（旧歌詞ボタン） -->
+                    <button id="btnHeaderMore" class="btn-more-toggle" title="メニュー">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 0 1 .865-.501 48.172 48.172 0 0 0 3.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM12.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM18.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0z" />
                         </svg>
                     </button>
                 </div>
@@ -147,10 +159,7 @@
                             <span id="currentPlaylistCount">-- 曲</span>
                             <span class="ph-divider">・</span>
                             <span id="currentPlaylistDuration">--</span>
-                            
-                            <!-- ソート順選択エリア -->
                             <div id="phSortArea" class="ph-sort-container"></div>
-                            
                             <button id="btnEditRules" class="btn-edit-rules">ルールを編集</button>
                         </div>
                         <div class="ph-actions" id="playlistActions" style="display: none;">
@@ -263,6 +272,29 @@
         </div>
     </div>
 
+    <!-- 次に再生 / 歌詞 モーダル (New!) -->
+    <div id="queueLyricsModal" class="modal-overlay" style="display: none;">
+        <div class="modal-content info-modal" style="width: 700px;">
+            <div class="info-tabs">
+                <button class="tab-btn active" data-target="tab-nextup">次に再生</button>
+                <button class="tab-btn" data-target="tab-current-lyrics">歌詞</button>
+            </div>
+            <div class="info-body">
+                <div id="tab-nextup" class="tab-pane active">
+                    <div id="modalQueueList" class="details-grid">
+                        <!-- ここにキューの内容がリスト表示されます -->
+                    </div>
+                </div>
+                <div id="tab-current-lyrics" class="tab-pane">
+                    <div id="modalLyricsView" class="lyrics-view"></div>
+                </div>
+            </div>
+            <div class="modal-buttons">
+                <button id="btnCloseQueueLyrics" class="btn-action primary">閉じる</button>
+            </div>
+        </div>
+    </div>
+
     <!-- プレイリスト削除確認モーダル -->
     <div id="playlistDeleteModal" class="modal-overlay" style="display: none;">
         <div class="modal-content" style="width: 320px;">
@@ -296,12 +328,9 @@
             </div>
             <div class="song-select-list" id="songSelectListContainer">
                 <table class="select-table">
-                    <thead id="selectTableHeader">
-                        <!-- JSで動的に生成 -->
-                    </thead>
+                    <thead id="selectTableHeader"></thead>
                     <tbody id="selectTableBody"></tbody>
                 </table>
-                <!-- 矩形選択用エリア -->
                 <div id="selectionMarquee" class="selection-marquee" style="display: none;"></div>
             </div>
             <div class="modal-footer">
@@ -315,16 +344,11 @@
     <div id="smartPlaylistModal" class="modal-overlay" style="display: none;">
         <div class="modal-content" style="width: 850px; max-width: 95%;">
             <h3>スマートプレイリストを新規作成</h3>
-            
             <div id="smartPlaylistNameContainer" style="margin-bottom: 20px; text-align: left;">
                 <label style="display: block; font-size: 0.85rem; font-weight: 700; color: var(--text-sub); margin-bottom: 6px;">プレイリスト名</label>
                 <input type="text" id="smartPlaylistName" class="smart-input" placeholder="スマートプレイリストの名前を入力..." style="width: 100%;">
             </div>
-
-            <div id="smartConditionRoot" style="margin: 24px 0; text-align: left; max-height: 55vh; overflow-y: auto;">
-                <!-- ここにルート条件グループがJSで挿入される -->
-            </div>
-
+            <div id="smartConditionRoot" style="margin: 24px 0; text-align: left; max-height: 50vh; overflow-y: auto;"></div>
             <div class="modal-buttons" style="margin-top: 16px;">
                 <button id="btnCancelSmart" class="btn-action secondary">キャンセル</button>
                 <button id="btnCreateSmart" class="btn-action primary">作成</button>

@@ -125,10 +125,10 @@
 
 /* --- 曲選択モーダル (可変幅対応) --- */
 .song-select-modal {
-    width: fit-content;    /* ★コンテンツの幅に合わせる */
-    min-width: 600px;      /* ★最低限の幅を確保 */
-    max-width: 95vw;       /* ★画面幅の95%を最大とする */
-    height: 90vh;          /* 画面高さの9割 */
+    width: fit-content;    
+    min-width: 600px;      
+    max-width: 95vw;       
+    height: 90vh;          
     text-align: left;
 }
 
@@ -157,7 +157,7 @@
 
 .song-select-list {
     flex: 1;
-    overflow: auto;        /* ★縦横両方のスクロールを有効化 */
+    overflow: auto;        
     position: relative;
     user-select: none;
     background: var(--card-bg); 
@@ -193,7 +193,6 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    /* セルの最大幅制限を緩和 */
     max-width: 500px;
 }
 
@@ -275,15 +274,30 @@
     content: ""; position: absolute; bottom: -1px; left: 0; width: 100%; height: 3px; background-color: var(--primary-color); border-radius: 3px 3px 0 0;
 }
 
-.info-body { flex: 1; min-height: 0; overflow: hidden; }
-.tab-pane { display: none; height: 100%; overflow-y: auto; }
-.tab-pane.active { display: block; }
+/* ★ 修正: スクロールを確実に動作させる設定 */
+.info-body { 
+    flex: 1; 
+    min-height: 0; 
+    overflow: hidden; 
+    display: flex;
+    flex-direction: column;
+}
+.tab-pane { 
+    display: none; 
+    height: auto;
+}
+.tab-pane.active { 
+    display: block; 
+    flex: 1;
+    overflow-y: auto; /* ★ 自身の高さが溢れた場合にスクロールを出す */
+    min-height: 0;
+}
 
-.details-grid { display: flex; flex-direction: column; gap: 10px; padding-right: 8px; }
+.details-grid { display: flex; flex-direction: column; gap: 10px; padding-right: 8px; padding-bottom: 10px; }
 .detail-item {
     display: flex; padding: 10px 14px; background: rgba(128, 128, 128, 0.05); border-radius: 8px; align-items: center;
 }
-.detail-label { width: 160px; font-weight: 700; color: var(--text-sub); font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.02em; }
+.detail-label { width: 160px; font-weight: 700; color: var(--text-sub); font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.02em; flex-shrink: 0;}
 .detail-value { flex: 1; color: var(--text-main); font-size: 0.95rem; word-break: break-all; font-weight: 500; }
 
 .large-art-container {

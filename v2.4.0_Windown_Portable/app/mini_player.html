@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Chordia - Mini Player</title>
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        body {
+            margin: 0; padding: 0;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            height: 100vh; width: 100vw;
+            overflow: hidden;
+            display: flex; flex-direction: column;
+            user-select: none;
+        }
+        .mini-container {
+            display: flex; flex-direction: column;
+            height: 100%; width: 100%;
+            padding: 4vh 5vw; 
+            box-sizing: border-box;
+        }
+        #view-default {
+            display: flex; flex-direction: column;
+            height: 100%; width: 100%;
+            min-height: 0;
+        }
+
+        .art-wrapper {
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            margin-bottom: 3vh;
+            flex-shrink: 0;
+        }
+
+        #art {
+            width: 80%;
+            max-height: 45vh; 
+            aspect-ratio: 1/1;
+            object-fit: cover;
+            border-radius: 3vw; 
+            box-shadow: 0 1vh 3vh rgba(0,0,0,0.2);
+            display: block;
+        }
+        
+        .info-area { 
+            text-align: center; 
+            margin-bottom: 2vh; 
+            flex-shrink: 0;
+        }
+        .info-title { 
+            font-weight: 800; 
+            font-size: clamp(1rem, 5vw, 1.5rem); 
+            white-space: nowrap; 
+            overflow: hidden; 
+            text-overflow: ellipsis; 
+            margin-bottom: 0.5vh; 
+        }
+        .info-artist { 
+            color: var(--text-sub); 
+            font-size: clamp(0.8rem, 4vw, 1.1rem); 
+            white-space: nowrap; 
+            overflow: hidden; 
+            text-overflow: ellipsis; 
+        }
+
+        .ctrl-area { 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            gap: 6vw; 
+            margin-bottom: 3vh; 
+            flex-shrink: 0;
+        }
+        .btn-ctrl { 
+            background: none; 
+            border: none; 
+            color: var(--text-main); 
+            cursor: pointer; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center;
+            padding: 0;
+        }
+        .btn-ctrl svg { 
+            width: clamp(24px, 8vw, 40px); 
+            height: clamp(24px, 8vw, 40px); 
+            fill: currentColor; 
+        }
+        .btn-ctrl.playpause { 
+            width: clamp(50px, 15vw, 80px); 
+            height: clamp(50px, 15vw, 80px); 
+            background: var(--primary-color); 
+            color: white; 
+            border-radius: 50%; 
+            box-shadow: 0 0.5vh 1.5vh rgba(0,0,0,0.1);
+        }
+        .btn-ctrl.playpause svg { 
+            width: 50%; 
+            height: 50%; 
+        }
+
+        .seek-area { 
+            margin-bottom: 3vh; 
+            flex-shrink: 0;
+        }
+        .seek-bar { 
+            -webkit-appearance: none; 
+            width: 100%; 
+            height: 6px; 
+            border-radius: 3px; 
+            background: rgba(128,128,128,0.2); 
+            outline: none; 
+            cursor: pointer; 
+        }
+        .seek-bar::-webkit-slider-thumb { 
+            -webkit-appearance: none; 
+            width: 14px; 
+            height: 14px; 
+            border-radius: 50%; 
+            background: var(--primary-color); 
+            box-shadow: 0 1px 3px rgba(0,0,0,0.3); 
+        }
+
+        .queue-area {
+            flex: 1; 
+            min-height: 0; 
+            background: rgba(128,128,128,0.05);
+            border-radius: 12px; 
+            padding: 1.5vh 3vw; 
+            overflow-y: auto;
+        }
+        .queue-title-text { 
+            font-size: clamp(0.7rem, 3vw, 0.9rem); 
+            font-weight: 700; 
+            color: var(--text-sub); 
+            margin-bottom: 1vh; 
+            text-transform: uppercase; 
+            letter-spacing: 0.05em; 
+        }
+        
+        /* ★ 追加・修正: キューアイテムのレイアウト */
+        .queue-item { 
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 1vh 0; 
+            border-bottom: 1px solid rgba(128,128,128,0.1); 
+        }
+        .queue-item:last-child { border-bottom: none; }
+        .queue-art {
+            width: clamp(32px, 8vw, 40px);
+            height: clamp(32px, 8vw, 40px);
+            border-radius: 4px;
+            object-fit: cover;
+            flex-shrink: 0;
+        }
+        .queue-info {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        .queue-title {
+            font-size: clamp(0.85rem, 3.5vw, 1rem); 
+            font-weight: 700;
+            color: var(--text-main);
+            white-space: nowrap; 
+            overflow: hidden; 
+            text-overflow: ellipsis; 
+            margin-bottom: 2px;
+        }
+        .queue-artist {
+            font-size: clamp(0.75rem, 3vw, 0.85rem); 
+            color: var(--text-sub);
+            white-space: nowrap; 
+            overflow: hidden; 
+            text-overflow: ellipsis; 
+        }
+        .queue-more { 
+            font-size: clamp(0.7rem, 3vw, 0.85rem); 
+            color: var(--text-sub); 
+            text-align: center; 
+            padding: 1.5vh 0; 
+            font-style: italic; 
+            opacity: 0.7;
+        }
+
+        .queue-area::-webkit-scrollbar { width: 4px; }
+        .queue-area::-webkit-scrollbar-thumb { background: rgba(128,128,128,0.2); border-radius: 4px; }
+    </style>
+    <script src="js/theme_head.js"></script>
+</head>
+<body>
+    <div class="mini-container">
+        <div id="view-default">
+            <div class="art-wrapper">
+                <img id="art" src="icon/Chordia.png">
+            </div>
+            <div class="info-area">
+                <div id="title" class="info-title">Title</div>
+                <div id="artist" class="info-artist">Artist</div>
+            </div>
+            <div class="ctrl-area">
+                <button class="btn-ctrl" id="prev">
+                    <svg viewBox="0 0 24 24"><path d="M9.195 18.44c1.25.713 2.805-.19 2.805-1.629v-2.34l6.945 3.968c1.25.714 2.805-.188 2.805-1.628V8.688c0-1.44-1.555-2.342-2.805-1.628L12 11.03v-2.34c0-1.44-1.555-2.343-2.805-1.629l-7.108 4.062c-1.26.72-1.26 2.536 0 3.256l7.108 4.061z"/></svg>
+                </button>
+                <button class="btn-ctrl playpause" id="playpause"></button>
+                <button class="btn-ctrl" id="next">
+                    <svg viewBox="0 0 24 24"><path d="M5.055 7.06c-1.25-.714-2.805.189-2.805 1.628v8.123c0 1.44 1.555 2.342 2.805 1.628L12 14.471v2.34c0 1.44 1.555 2.342 2.805 1.628l7.108-4.061c1.26-.72 1.26-2.536 0-3.256l-7.108-4.062c-1.25-.713-2.805.19-2.805 1.629v2.34l-6.945-3.968Z"/></svg>
+                </button>
+            </div>
+            <div class="seek-area">
+                <input type="range" id="seek" class="seek-bar" min="0" max="1000" value="0">
+            </div>
+            <div class="queue-area">
+                <div class="queue-title-text">次に再生</div>
+                <div id="queue-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/player/mini_player.js"></script>
+</body>
+</html>

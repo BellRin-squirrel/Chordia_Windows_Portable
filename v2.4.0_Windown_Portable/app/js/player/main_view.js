@@ -8,18 +8,13 @@
         lastTrackClickedIndex: null,    
 
         init: function() {
-            document.getElementById('btnPlayAll').addEventListener('click', () => window.PlayerController.startPlaybackSession('normal'));
-            document.getElementById('btnShuffleAll').addEventListener('click', () => window.PlayerController.startPlaybackSession('shuffle'));
+            const btnPlayAll = document.getElementById('btnPlayAll');
+            if (btnPlayAll) btnPlayAll.addEventListener('click', () => window.PlayerController.startPlaybackSession('normal'));
             
-            const btnEditRules = document.createElement('button');
-            btnEditRules.id = 'btnEditRules';
-            btnEditRules.className = 'btn-edit-rules';
-            btnEditRules.textContent = 'ルールを編集';
-            btnEditRules.onclick = () => {
-                const plData = s.playlists[s.currentPlaylistIndex];
-                if (window.SidebarController) window.SidebarController.openSmartPlaylistModal(plData);
-            };
-
+            const btnShuffleAll = document.getElementById('btnShuffleAll');
+            if (btnShuffleAll) btnShuffleAll.addEventListener('click', () => window.PlayerController.startPlaybackSession('shuffle'));
+            
+            // リスト外クリックで選択解除
             document.addEventListener('click', (e) => {
                 const isClickInTable = e.target.closest('.song-table tr');
                 const isClickInMenu = e.target.closest('.context-menu');
@@ -35,30 +30,40 @@
 
         initInfoModal: function() {
             const modal = document.getElementById('songInfoModal');
+            if (!modal) return;
             const btnClose = document.getElementById('btnCloseInfo');
             if (btnClose) btnClose.onclick = () => modal.classList.remove('show');
+
             const tabs = modal.querySelectorAll('.tab-btn');
             tabs.forEach(btn => {
                 btn.onclick = () => {
                     tabs.forEach(b => b.classList.remove('active'));
                     modal.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
                     btn.classList.add('active');
-                    document.getElementById(btn.dataset.target).classList.add('active');
+                    const pane = document.getElementById(btn.dataset.target);
+                    if (pane) pane.classList.add('active');
                 };
             });
         },
 
         initTrackMenuEvents: function() {
-            document.getElementById('menuSongInfo').onclick = () => this.openSongInfoModal();
-            document.getElementById('menuEditSmartRules').onclick = () => {
+            const mInfo = document.getElementById('menuSongInfo');
+            if (mInfo) mInfo.onclick = () => this.openSongInfoModal();
+            
+            const mEdit = document.getElementById('menuEditSmartRules');
+            if (mEdit) mEdit.onclick = () => {
                 const plData = s.playlists[s.currentPlaylistIndex];
                 if (window.SidebarController) window.SidebarController.openSmartPlaylistModal(plData);
             };
-            document.getElementById('menuShowInExplorer').onclick = () => {
+            
+            const mExplorer = document.getElementById('menuShowInExplorer');
+            if (mExplorer) mExplorer.onclick = () => {
                 const songs = this.getSelectedSongs();
                 if (songs.length > 0) eel.open_in_explorer(songs[0].musicFilename)();
             };
-            document.getElementById('menuRemoveFromPlaylist').onclick = async () => {
+            
+            const mRemove = document.getElementById('menuRemoveFromPlaylist');
+            if (mRemove) mRemove.onclick = async () => {
                 const pl = s.playlists[s.currentPlaylistIndex];
                 const songs = this.getSelectedSongs().map(song => song.musicFilename.split(/[\\/]/).pop());
                 if (pl.type === 'smart') this.openSmartRemoveConfirmModal(pl.id, songs);
@@ -71,34 +76,37 @@
 
         initSmartRemoveModal: function() {
             const modal = document.getElementById('smartRemoveConfirmModal');
+            if (!modal) return;
             const btnCancel = document.getElementById('btnCancelSmartRemove');
             const btnExec = document.getElementById('btnExecSmartRemove');
-            btnCancel.onclick = () => modal.classList.remove('show');
-            btnExec.onclick = async () => {
-                modal.classList.remove('show');
-                window.SidebarController.showSaving();
-                const plId = modal.dataset.plId;
-                const songs = JSON.parse(modal.dataset.songs);
-                try {
-                    const res = await eel.convert_smart_to_normal_and_remove_songs(plId, songs)();
-                    if (res) {
-                        await window.SidebarController.loadPlaylists();
-                        const newIdx = s.playlists.findIndex(p => p.id === plId);
-                        if (newIdx !== -1) window.MainViewController.selectPlaylist(newIdx);
-                        u.showToast("通常プレイリストに変換し削除しました", false);
-                    }
-                } catch (e) { u.showToast("処理に失敗しました", true); } finally { window.SidebarController.hideSaving(); }
-            };
+            if (btnCancel) btnCancel.onclick = () => modal.classList.remove('show');
+            if (btnExec) {
+                btnExec.onclick = async () => {
+                    modal.classList.remove('show');
+                    window.SidebarController.showSaving();
+                    const plId = modal.dataset.plId;
+                    const songs = JSON.parse(modal.dataset.songs);
+                    try {
+                        const res = await eel.convert_smart_to_normal_and_remove_songs(plId, songs)();
+                        if (res) {
+                            await window.SidebarController.loadPlaylists();
+                            const newIdx = s.playlists.findIndex(p => p.id === plId);
+                            if (newIdx !== -1) window.MainViewController.selectPlaylist(newIdx);
+                            u.showToast("通常プレイリストに変換し削除しました", false);
+                        }
+                    } catch (e) { u.showToast("処理に失敗しました", true); } finally { window.SidebarController.hideSaving(); }
+                };
+            }
         },
 
         openSmartRemoveConfirmModal: function(plId, songs) {
             const modal = document.getElementById('smartRemoveConfirmModal');
+            if (!modal) return;
             modal.dataset.plId = plId;
             modal.dataset.songs = JSON.stringify(songs);
             modal.classList.add('show');
         },
 
-        // ★修正: 遅延ロードロジックを追加
         selectPlaylist: async function(index) {
             if (index === -1 || !s.playlists[index]) return;
 
@@ -109,14 +117,13 @@
 
             const pl = s.playlists[index];
 
-            // まだ一度も読み込まれていなければ Python から取得
             if (pl.songs === null) {
                 u.showLoading();
                 try {
                     u.updateLoadingProgress(0, 0, `「${pl.playlistName}」を読み込み中...`);
                     const details = await eel.get_playlist_details(pl.id)();
                     if (details) {
-                        s.playlists[index] = details; // キャッシュに保存
+                        s.playlists[index] = details; 
                     }
                 } catch (e) {
                     console.error(e);
@@ -160,28 +167,42 @@
         getSelectedSongs: function() {
             if (s.currentPlaylistIndex === -1) return [];
             const pl = s.playlists[s.currentPlaylistIndex];
+            if (!pl || !pl.songs) return [];
             const sortedSongs = u.sortSongs(pl.songs, pl.sortBy, pl.sortDesc);
             return Array.from(this.selectedTrackIndices).map(idx => sortedSongs[idx]);
         },
 
         showTrackContextMenu: function(e) {
             const menu = document.getElementById('trackContextMenu');
+            if (!menu) return;
             const pl = s.playlists[s.currentPlaylistIndex];
-            document.getElementById('menuEditSmartRules').style.display = (pl.type === 'smart') ? 'block' : 'none';
+            
+            const btnEdit = document.getElementById('menuEditSmartRules');
+            if (btnEdit) btnEdit.style.display = (pl.type === 'smart') ? 'block' : 'none';
             this.renderPlaylistSubmenu();
-            menu.style.display = 'block'; menu.style.visibility = 'hidden'; 
+
+            menu.style.display = 'block';
+            menu.style.visibility = 'hidden';
+            
             const mw = 220; const mh = menu.offsetHeight;
             let x = e.clientX; let y = e.clientY;
             if (x + mw > window.innerWidth) x -= mw;
             if (y + mh > window.innerHeight) y -= mh;
-            menu.style.left = `${x}px`; menu.style.top = `${y}px`; menu.style.visibility = 'visible';
+            
+            menu.style.left = `${x}px`;
+            menu.style.top = `${y}px`;
+            menu.style.visibility = 'visible';
+
             const submenu = document.getElementById('playlistSubmenu');
-            if (x + mw + 180 > window.innerWidth) submenu.classList.add('left-side');
-            else submenu.classList.remove('left-side');
+            if (submenu) {
+                if (x + mw + 180 > window.innerWidth) submenu.classList.add('left-side');
+                else submenu.classList.remove('left-side');
+            }
         },
 
         renderPlaylistSubmenu: function() {
             const container = document.getElementById('playlistSubmenu');
+            if (!container) return;
             container.innerHTML = '<ul><li id="subNewPlaylist">新規プレイリスト</li><li class="menu-divider"></li></ul>';
             const ul = container.querySelector('ul');
             s.playlists.forEach(p => {
@@ -190,28 +211,30 @@
                     li.onclick = async () => {
                         const songs = this.getSelectedSongs().map(song => song.musicFilename.split(/[\\/]/).pop());
                         const res = await eel.add_songs_to_playlist(p.id, songs)();
-                        // 追加された側が現在開いているプレイリストなら、そちらもキャッシュをクリアするか更新する必要があるが、
-                        // ここでは簡易的にトースト通知のみ
                         if (res) u.showToast(`「${p.playlistName}」に追加しました`, false);
                     };
                     ul.appendChild(li);
                 }
             });
-            document.getElementById('subNewPlaylist').onclick = async () => {
-                const songs = this.getSelectedSongs();
-                const filenames = songs.map(song => song.musicFilename.split(/[\\/]/).pop());
-                const defaultName = songs.length === 1 ? songs[0].title : `${songs.length}個の楽曲`;
-                const newPl = await eel.create_playlist(defaultName, 'normal')();
-                if (filenames.length > 0 && newPl) await eel.add_songs_to_playlist(newPl.id, filenames)();
-                await window.SidebarController.loadPlaylists();
-                if (newPl) window.SidebarController.startRenameById(newPl.id);
-            };
+            const btnSubNew = document.getElementById('subNewPlaylist');
+            if (btnSubNew) {
+                btnSubNew.onclick = async () => {
+                    const songs = this.getSelectedSongs();
+                    const filenames = songs.map(song => song.musicFilename.split(/[\\/]/).pop());
+                    const defaultName = songs.length === 1 ? songs[0].title : `${songs.length}個の楽曲`;
+                    const newPl = await eel.create_playlist(defaultName, 'normal')();
+                    if (filenames.length > 0 && newPl) await eel.add_songs_to_playlist(newPl.id, filenames)();
+                    await window.SidebarController.loadPlaylists();
+                    if (newPl) window.SidebarController.startRenameById(newPl.id);
+                };
+            }
         },
 
         openSongInfoModal: async function() {
             const selectedSongs = this.getSelectedSongs();
             if (selectedSongs.length === 0) return;
             const modal = document.getElementById('songInfoModal');
+            if (!modal) return;
             const pl = s.playlists[s.currentPlaylistIndex];
             const imgEl = document.getElementById('infoArt');
             const largeImgEl = document.getElementById('largeArt');
@@ -219,41 +242,62 @@
             const artistEl = document.getElementById('infoArtist');
             const albumEl = document.getElementById('infoAlbum');
             if (selectedSongs.length === 1) {
-                const song = selectedSongs[0]; imgEl.src = largeImgEl.src = song.imageData || s.DEFAULT_ICON;
-                titleEl.textContent = song.title || "Unknown Title"; artistEl.textContent = song.artist || "Unknown Artist";
-                albumEl.textContent = song.album || ""; albumEl.style.display = song.album ? "block" : "none";
-                document.getElementById('infoLyrics').textContent = song.lyric || "歌詞情報はありません。";
+                const song = selectedSongs[0]; 
+                if (imgEl) imgEl.src = song.imageData || s.DEFAULT_ICON;
+                if (largeImgEl) largeImgEl.src = song.imageData || s.DEFAULT_ICON;
+                if (titleEl) titleEl.textContent = song.title || "Unknown Title"; 
+                if (artistEl) artistEl.textContent = song.artist || "Unknown Artist";
+                if (albumEl) {
+                    albumEl.textContent = song.album || ""; 
+                    albumEl.style.display = song.album ? "block" : "none";
+                }
+                const lyrView = document.getElementById('infoLyrics');
+                if (lyrView) lyrView.textContent = song.lyric || "歌詞情報はありません。";
             } else {
                 const artworks = new Set(selectedSongs.map(song => song.imageData));
-                imgEl.src = largeImgEl.src = (artworks.size === 1) ? Array.from(artworks)[0] : s.DEFAULT_ICON;
-                titleEl.textContent = `${selectedSongs.length}個の楽曲を選択中`; artistEl.textContent = `選択元: ${pl.playlistName}`;
-                albumEl.style.display = "none"; document.getElementById('infoLyrics').textContent = "複数選択時は歌詞を表示できません。";
+                const commonArt = (artworks.size === 1) ? Array.from(artworks)[0] : s.DEFAULT_ICON;
+                if (imgEl) imgEl.src = commonArt;
+                if (largeImgEl) largeImgEl.src = commonArt;
+                if (titleEl) titleEl.textContent = `${selectedSongs.length}個の楽曲を選択中`; 
+                if (artistEl) artistEl.textContent = `選択元: ${pl.playlistName}`;
+                if (albumEl) albumEl.style.display = "none"; 
+                const lyrView = document.getElementById('infoLyrics');
+                if (lyrView) lyrView.textContent = "複数選択時は歌詞を表示できません。";
             }
-            const detailsList = document.getElementById('detailsList'); detailsList.innerHTML = '';
-            if (!this.playerSettings) this.playerSettings = await eel.get_app_settings()();
-            const allTags = await eel.get_available_tags()();
-            const dbTags = allTags.filter(t => this.playerSettings.active_tags.includes(t.key));
-            dbTags.forEach(tag => {
-                const row = document.createElement('div'); row.className = 'detail-item';
-                let valText = (selectedSongs.length === 1) ? (selectedSongs[0][tag.key] || "-") : 
-                    (new Set(selectedSongs.map(s => s[tag.key] || ""))).size === 1 ? Array.from(new Set(selectedSongs.map(s => s[tag.key] || "")))[0] : "< 複数の値 >";
-                row.innerHTML = `<div class="detail-label">${tag.label}</div><div class="detail-value">${u.escapeHtml(valText || "-")}</div>`;
-                detailsList.appendChild(row);
-            });
-            modal.querySelector('.tab-btn[data-target="tab-details"]').click(); modal.classList.add('show');
+            const detailsList = document.getElementById('detailsList'); 
+            if (detailsList) {
+                detailsList.innerHTML = '';
+                if (!this.playerSettings) this.playerSettings = await eel.get_app_settings()();
+                const allTags = await eel.get_available_tags()();
+                const dbTags = allTags.filter(t => this.playerSettings.active_tags.includes(t.key));
+                dbTags.forEach(tag => {
+                    const row = document.createElement('div'); row.className = 'detail-item';
+                    let valText = (selectedSongs.length === 1) ? (selectedSongs[0][tag.key] || "-") : 
+                        (new Set(selectedSongs.map(s => s[tag.key] || ""))).size === 1 ? Array.from(new Set(selectedSongs.map(s => s[tag.key] || "")))[0] : "< 複数の値 >";
+                    row.innerHTML = `<div class="detail-label">${tag.label}</div><div class="detail-value">${u.escapeHtml(valText || "-")}</div>`;
+                    detailsList.appendChild(row);
+                });
+            }
+            const firstTab = modal.querySelector('.tab-btn[data-target="tab-details"]');
+            if (firstTab) firstTab.click(); 
+            modal.classList.add('show');
         },
 
         renderMainView: async function() {
-            if (s.currentPlaylistIndex === -1 || !s.playlists[s.currentPlaylistIndex] || s.playlists[s.currentPlaylistIndex].songs === null) return;
+            const target = s.playlists[s.currentPlaylistIndex];
+            if (s.currentPlaylistIndex === -1 || !target || target.songs === null) return;
             if (!this.playerSettings) this.playerSettings = await eel.get_app_settings()();
 
-            const plData = s.playlists[s.currentPlaylistIndex];
+            const plData = target;
             const isDesc = plData.sortDesc === true;
             const songs = u.sortSongs(plData.songs, plData.sortBy, isDesc);
             const visibleTags = this.playerSettings.player_visible_tags || ['title', 'artist', 'album'];
             
-            document.getElementById('currentPlaylistTitle').textContent = plData.playlistName;
-            document.getElementById('currentPlaylistCount').textContent = `${songs.length} 曲`;
+            const titleEl = document.getElementById('currentPlaylistTitle');
+            const countEl = document.getElementById('currentPlaylistCount');
+            const durEl = document.getElementById('currentPlaylistDuration');
+            if (titleEl) titleEl.textContent = plData.playlistName;
+            if (countEl) countEl.textContent = `${songs.length} 曲`;
             
             let totalSec = 0;
             songs.forEach(song => {
@@ -262,70 +306,77 @@
                     if(p.length===2) totalSec += parseInt(p[0])*60 + parseInt(p[1]);
                 }
             });
-            document.getElementById('currentPlaylistDuration').textContent = u.formatTotalDuration(totalSec);
+            if (durEl) durEl.textContent = u.formatTotalDuration(totalSec);
 
             const sortArea = document.getElementById('phSortArea');
-            sortArea.innerHTML = '';
-            let btnEdit = document.getElementById('btnEditRules');
-            if (!btnEdit) {
-                btnEdit = document.createElement('button');
-                btnEdit.id = 'btnEditRules';
-                btnEdit.className = 'btn-edit-rules';
-                btnEdit.textContent = 'ルールを編集';
-                btnEdit.onclick = () => {
-                    const plData = s.playlists[s.currentPlaylistIndex];
-                    if (window.SidebarController) window.SidebarController.openSmartPlaylistModal(plData);
+            if (sortArea) {
+                sortArea.innerHTML = '';
+                let btnEdit = document.getElementById('btnEditRules');
+                if (!btnEdit) {
+                    btnEdit = document.createElement('button');
+                    btnEdit.id = 'btnEditRules';
+                    btnEdit.className = 'btn-edit-rules';
+                    btnEdit.textContent = 'ルールを編集';
+                    btnEdit.onclick = () => {
+                        const pl = s.playlists[s.currentPlaylistIndex];
+                        if (window.SidebarController) window.SidebarController.openSmartPlaylistModal(pl);
+                    };
+                }
+                btnEdit.style.display = (plData.type === 'smart') ? 'inline-block' : 'none';
+                sortArea.appendChild(btnEdit);
+
+                const sortLabel = document.createElement('span');
+                sortLabel.className = 'ph-sort-label';
+                sortLabel.textContent = '並び替え:';
+                sortArea.appendChild(sortLabel);
+
+                const sortSelect = document.createElement('select');
+                sortSelect.className = 'ph-sort-select';
+                const allTags = await eel.get_available_tags()();
+                const sortTags = allTags.filter(t => this.playerSettings.active_tags.includes(t.key));
+                sortTags.forEach(tag => {
+                    const opt = document.createElement('option');
+                    opt.value = tag.key; opt.textContent = tag.label;
+                    if (plData.sortBy === tag.key) opt.selected = true;
+                    sortSelect.appendChild(opt);
+                });
+                sortSelect.onchange = async (e) => {
+                    const newSort = e.target.value;
+                    plData.sortBy = newSort;
+                    await eel.update_playlist_by_id(plData.id, 'sortBy', newSort)();
+                    this.renderMainView(); 
                 };
+                sortArea.appendChild(sortSelect);
+
+                const orderSelect = document.createElement('select');
+                orderSelect.className = 'ph-sort-select';
+                const optAsc = document.createElement('option');
+                optAsc.value = "asc"; optAsc.textContent = "昇順";
+                const optDesc = document.createElement('option');
+                optDesc.value = "desc"; optDesc.textContent = "降順";
+                if (isDesc) optDesc.selected = true; else optAsc.selected = true;
+                orderSelect.appendChild(optAsc);
+                orderSelect.appendChild(optDesc);
+                orderSelect.onchange = async (e) => {
+                    const isDescending = (e.target.value === "desc");
+                    plData.sortDesc = isDescending;
+                    await eel.update_playlist_by_id(plData.id, 'sortDesc', isDescending)();
+                    this.renderMainView();
+                };
+                sortArea.appendChild(orderSelect);
             }
-            btnEdit.style.display = (plData.type === 'smart') ? 'inline-block' : 'none';
-            sortArea.appendChild(btnEdit);
-
-            const sortLabel = document.createElement('span');
-            sortLabel.className = 'ph-sort-label';
-            sortLabel.textContent = '並び替え:';
-            sortArea.appendChild(sortLabel);
-
-            const sortSelect = document.createElement('select');
-            sortSelect.className = 'ph-sort-select';
-            const allTags = await eel.get_available_tags()();
-            const sortTags = allTags.filter(t => this.playerSettings.active_tags.includes(t.key));
-            sortTags.forEach(tag => {
-                const opt = document.createElement('option');
-                opt.value = tag.key; opt.textContent = tag.label;
-                if (plData.sortBy === tag.key) opt.selected = true;
-                sortSelect.appendChild(opt);
-            });
-            sortSelect.onchange = async (e) => {
-                const newSort = e.target.value;
-                plData.sortBy = newSort;
-                await eel.update_playlist_by_id(plData.id, 'sortBy', newSort)();
-                this.renderMainView(); 
-            };
-            sortArea.appendChild(sortSelect);
-
-            const orderSelect = document.createElement('select');
-            orderSelect.className = 'ph-sort-select';
-            const optAsc = document.createElement('option');
-            optAsc.value = "asc"; optAsc.textContent = "昇順";
-            const optDesc = document.createElement('option');
-            optDesc.value = "desc"; optDesc.textContent = "降順";
-            if (isDesc) optDesc.selected = true; else optAsc.selected = true;
-            orderSelect.appendChild(optAsc);
-            orderSelect.appendChild(optDesc);
-            orderSelect.onchange = async (e) => {
-                const isDescending = (e.target.value === "desc");
-                plData.sortDesc = isDescending;
-                await eel.update_playlist_by_id(plData.id, 'sortDesc', isDescending)();
-                this.renderMainView();
-            };
-            sortArea.appendChild(orderSelect);
 
             const cover = document.getElementById('playlistCoverArt');
-            if (songs.length>0 && songs[0].imageData) cover.src = songs[0].imageData;
-            else cover.src = s.DEFAULT_ICON;
+            if (cover) {
+                if (songs.length>0 && songs[0].imageData) cover.src = songs[0].imageData;
+                else cover.src = s.DEFAULT_ICON;
+            }
 
-            document.getElementById('playlistActions').style.display = 'flex';
+            const actions = document.getElementById('playlistActions');
+            if (actions) actions.style.display = 'flex';
+            
             const tbody = document.getElementById('songListBody');
+            if (!tbody) return;
             tbody.innerHTML = '';
             
             songs.forEach((song, idx) => {
@@ -363,9 +414,8 @@
             });
         },
 
+        // ★ 修正: 個別の再生も startPlaybackSession を介して、設定リセットを適用
         playTrackAtIndex: function(idx) {
-            s.isShuffle = false; 
-            s.loopMode = 'off';
             window.PlayerController.startPlaybackSession('normal', idx);
         }
     };
