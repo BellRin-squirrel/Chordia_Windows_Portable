@@ -1,0 +1,250 @@
+@charset "UTF-8";
+
+/* --- モーダル共通オーバーレイ --- */
+.modal-overlay {
+    position: fixed;
+    top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0, 0, 0, 0.6);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    z-index: 2000;
+    backdrop-filter: blur(8px);
+    transition: opacity 0.3s ease;
+}
+
+.modal-overlay.show { display: flex; }
+
+.modal-content {
+    background: var(--card-bg);
+    padding: 32px;
+    border-radius: 24px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    position: relative;
+    max-width: 90vw;
+    max-height: 95vh;
+    overflow-y: auto;
+    color: var(--text-main);
+    border: 1px solid rgba(128, 128, 128, 0.1);
+}
+
+.modal-content h3 {
+    margin-top: 0;
+    margin-bottom: 20px;
+    font-size: 1.4rem;
+    font-weight: 800;
+    text-align: left;
+}
+
+/* --- 閉じるボタン (右上の丸ボタン) --- */
+.btn-close-circle {
+    position: absolute; 
+    top: 20px; 
+    right: 20px;
+    width: 32px; 
+    height: 32px;
+    border-radius: 50%;
+    background-color: rgba(128, 128, 128, 0.1); 
+    border: none;
+    color: var(--text-sub); 
+    cursor: pointer; 
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+.btn-close-circle:hover {
+    background-color: #ef4444;
+    color: white;
+    transform: rotate(90deg);
+}
+.btn-close-circle:active { opacity: 0; }
+
+.btn-close-x {
+    position: absolute; top: 20px; right: 20px;
+    background: none; border: none; cursor: pointer; color: var(--text-sub);
+    padding: 4px; transition: color 0.2s;
+}
+.btn-close-x:hover { color: var(--text-main); }
+
+/* --- アートワークミニタブ (インポート画面風) --- */
+.art-tabs-mini {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 16px;
+    background: var(--bg-color);
+    padding: 4px;
+    border-radius: 10px;
+}
+
+.art-mini-tab-btn {
+    flex: 1;
+    border: none;
+    background: none;
+    padding: 8px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--text-sub);
+    cursor: pointer;
+    border-radius: 6px;
+    transition: all 0.2s;
+}
+
+.art-mini-tab-btn.active {
+    background: var(--card-bg);
+    color: var(--primary-color);
+    box-shadow: var(--shadow-sm);
+}
+
+.art-mini-tab-content {
+    display: none;
+}
+
+.art-mini-tab-content.active {
+    display: block;
+}
+
+/* --- アルバムアート編集モーダル --- */
+.art-preview-area {
+    background: var(--bg-color);
+    padding: 20px;
+    border-radius: 16px;
+    margin-bottom: 20px;
+    text-align: center;
+    border: 1px solid rgba(128, 128, 128, 0.1);
+}
+.art-preview-area img {
+    width: 240px;
+    height: 240px;
+    object-fit: cover;
+    border-radius: 12px;
+    box-shadow: var(--shadow-md);
+    margin-bottom: 12px;
+}
+#artStatusText { font-size: 0.85rem; color: var(--text-sub); font-weight: 700; }
+
+.art-actions {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 24px;
+}
+.btn-select-art {
+    flex: 1;
+    background: var(--bg-color);
+    border: 1px solid rgba(128, 128, 128, 0.2);
+    padding: 12px;
+    border-radius: 10px;
+    font-weight: 700;
+    cursor: pointer;
+    color: var(--text-main);
+    transition: all 0.2s;
+}
+.btn-select-art:hover { background: rgba(128, 128, 128, 0.1); }
+.btn-delete-art {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    color: #ef4444;
+    padding: 12px 20px;
+    border-radius: 10px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.btn-delete-art:hover { background: #ef4444; color: white; }
+
+/* --- 歌詞編集モーダル --- */
+.lyric-modal textarea {
+    width: 100%;
+    background: var(--bg-color);
+    color: var(--text-main);
+    border: 1px solid rgba(128, 128, 128, 0.2);
+    border-radius: 12px;
+    padding: 16px;
+    font-family: inherit;
+    font-size: 1rem;
+    line-height: 1.6;
+    resize: vertical;
+    outline: none;
+    transition: border-color 0.2s;
+}
+.lyric-modal textarea:focus { border-color: var(--primary-color); }
+.btn-auto-lyric {
+    background: var(--bg-color);
+    border: 1px solid var(--primary-color);
+    color: var(--primary-color);
+    padding: 6px 14px;
+    border-radius: 8px;
+    font-weight: 700;
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+.btn-auto-lyric:hover { background: var(--primary-color); color: white; }
+
+/* --- 一括変更モーダル --- */
+.bulk-form-container {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin: 20px 0;
+}
+.bulk-form-container .form-row {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.bulk-input {
+    width: 100%;
+    background: var(--bg-color);
+    color: var(--text-main);
+    border: 1px solid rgba(128, 128, 128, 0.2);
+    border-radius: 8px;
+    padding: 10px 12px;
+    outline: none;
+}
+.bulk-input:focus { border-color: var(--primary-color); }
+
+/* --- 汎用ボタン --- */
+.modal-buttons {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+    margin-top: 24px;
+}
+.btn-primary, .btn-save {
+    background-color: var(--primary-color) !important;
+    color: white !important;
+    border: none;
+    padding: 12px 28px;
+    border-radius: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: filter 0.2s, transform 0.1s;
+}
+.btn-primary:hover, .btn-save:hover { filter: brightness(1.1); transform: translateY(-1px); }
+.btn-primary:active, .btn-save:active { transform: translateY(0); }
+
+.btn-cancel, .btn-secondary {
+    background: rgba(128, 128, 128, 0.1);
+    color: var(--text-main);
+    border: none;
+    padding: 12px 24px;
+    border-radius: 12px;
+    font-weight: 700;
+    cursor: pointer;
+}
+.btn-cancel:hover { background: rgba(128, 128, 128, 0.2); }
+
+/* --- 高度な検索 --- */
+.smart-group-wrapper {
+    background: rgba(128, 128, 128, 0.03);
+    border-radius: 16px;
+    padding: 16px;
+    border: 1px solid rgba(128, 128, 128, 0.1);
+}
+
+.custom-select-trigger {
+    background-color: var(--bg-color);
+    border: 1px solid rgba(128, 128, 128, 0.2);
+    border-radius: 8px;
+    color: var(--text-main);
+}

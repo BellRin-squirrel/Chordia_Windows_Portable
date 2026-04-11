@@ -36,8 +36,10 @@ window.LyricController = {
 
     searchLyrics: async function() {
         const u = window.AddMusicUtils;
-        const titleEl = document.getElementById('title');
-        const artistEl = document.getElementById('artist');
+        
+        // ★修正: IDを tag_title, tag_artist に変更 (main.jsの動的生成に合わせる)
+        const titleEl = document.getElementById('tag_title');
+        const artistEl = document.getElementById('tag_artist');
         const btn = document.getElementById('btnAutoLyric');
 
         const title = titleEl ? titleEl.value.trim() : "";

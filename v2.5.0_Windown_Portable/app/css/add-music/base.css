@@ -27,6 +27,46 @@ body {
 .header-left { position: absolute; left: 20px; z-index: 10; }
 .header-center { text-align: center; }
 
+/* --- タブメニュー --- */
+.tab-menu {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 24px;
+    border-bottom: 1px solid rgba(128, 128, 128, 0.2);
+}
+
+.tab-btn {
+    padding: 12px 24px;
+    background: none;
+    border: none;
+    font-weight: 700;
+    color: var(--text-sub);
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    transition: all 0.2s;
+    font-size: 1rem;
+    outline: none;
+    border-radius: 8px 8px 0 0;
+}
+
+.tab-btn:hover {
+    color: var(--text-main);
+    background: rgba(128, 128, 128, 0.05);
+}
+
+.tab-btn.active {
+    color: var(--primary-color);
+    border-bottom-color: var(--primary-color);
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
 /* Gridレイアウト */
 .main-split-container {
     display: grid;

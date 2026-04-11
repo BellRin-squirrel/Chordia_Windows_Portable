@@ -72,14 +72,14 @@ function js_manage_progress(current, total) {
 
         updateSearchUI: function() {
             const btnClear = document.getElementById('btnClearSearch');
-            const hasFilter = s.searchQuery || (s.advancedConditions && s.advancedConditions.length > 0);
+            const hasFilter = s.searchQuery || (s.advancedConditions && s.advancedConditions.items);
             if (btnClear) {
                 btnClear.style.display = hasFilter ? 'inline-block' : 'none';
             }
             
             const btnAdvanced = document.getElementById('btnAdvancedSearch');
             if (btnAdvanced) {
-                if (s.advancedConditions && s.advancedConditions.length > 0) {
+                if (s.advancedConditions && s.advancedConditions.items) {
                     btnAdvanced.classList.add('active');
                 } else {
                     btnAdvanced.classList.remove('active');
@@ -152,12 +152,8 @@ function js_manage_progress(current, total) {
         updateBulkBar: function() {
             const bar = document.getElementById('bulkActionBar');
             if(bar) {
-                // ★ 修正: 選択モードに入ったら常に表示する
-                if (s.isSelectionMode) {
-                    bar.classList.add('active');
-                } else {
-                    bar.classList.remove('active');
-                }
+                if (s.isSelectionMode) bar.classList.add('active');
+                else bar.classList.remove('active');
             }
             const countEl = document.getElementById('bulkCount');
             if(countEl) countEl.textContent = s.selectedIds.size;
@@ -242,7 +238,6 @@ function js_manage_progress(current, total) {
             }
 
             const fragment = document.createDocumentFragment();
-
             s.libraryData.forEach((item, index) => {
                 const tr = document.createElement('tr');
                 const fname = item.musicFilename.split(/[\\/]/).pop();
@@ -255,7 +250,7 @@ function js_manage_progress(current, total) {
                 }
 
                 html += `<td class="col-art"><img src="${item.imageData || s.DEFAULT_ICON}" class="thumb-art"></td>` +
-                        `<td class="col-play"><button class="btn-play" id="btnPlay_${index}" onclick="window.PlayerController.playPreview(${index})">${s.SVG_PLAY}</button></td>`;
+                        `<td class="col-play"><button class="btn-play" id="btnPlay_${index}" onclick="window.PlayerController.playPreview(${index})">${s.currentPlayingIndex === index ? s.SVG_PAUSE : s.SVG_PLAY}</button></td>`;
                 
                 s.activeTags.forEach(key => {
                     html += `<td class="editable col-${key}" onclick="window.TableController.showEditHint()" ondblclick="window.TableController.startEdit(this, ${index}, '${key}')">${u.escapeHtml(item[key] || '')}</td>`;
@@ -343,7 +338,6 @@ function js_manage_progress(current, total) {
 
         startEdit: function(td, index, field) {
             if (s.isSelectionMode) return;
-            
             const originalText = td.textContent.trim();
             td.innerHTML = `<input type="text" class="inline-input" value="${originalText}">`;
             const input = td.querySelector('input');
@@ -354,30 +348,21 @@ function js_manage_progress(current, total) {
                     const success = await eel.update_song_by_id(item.musicFilename, field, input.value)();
                     if (success) { 
                         item[field] = input.value; 
-                        td.textContent = input.value; 
-                    } else { 
-                        td.textContent = originalText; 
-                    }
-                } else { 
-                    td.textContent = originalText; 
-                }
+                        td.textContent = input.value;
+                        // プレビュー再生中の楽曲ならバーを更新
+                        if (s.currentPlayingIndex === index) {
+                            window.PlayerController.updatePlayerInfo(item);
+                        }
+                    } else { td.textContent = originalText; }
+                } else { td.textContent = originalText; }
             };
 
-            input.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    input.blur(); 
-                } else if (e.key === 'Escape') {
-                    e.preventDefault();
-                    input.onblur = null; 
-                    td.textContent = originalText;
-                }
-            });
-
+            input.onkeydown = (e) => {
+                if (e.key === 'Enter') { e.preventDefault(); input.blur(); } 
+                else if (e.key === 'Escape') { e.preventDefault(); input.onblur = null; td.textContent = originalText; }
+            };
             input.onblur = commitEdit;
-            
-            input.focus();
-            input.select(); 
+            input.focus(); input.select(); 
         }
     };
 })();

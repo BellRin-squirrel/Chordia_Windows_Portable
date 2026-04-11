@@ -2,13 +2,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // プレイヤーの初期化
     if (window.PlayerController && typeof window.PlayerController.init === 'function') {
         window.PlayerController.init();
-    } else {
-        console.error("PlayerController is not defined or init is missing");
     }
 
     // モーダルの初期化 (一括変更・削除・高度な検索など)
-    if (window.ManageModal && typeof window.ManageModal.init === 'function') {
-        window.ManageModal.init();
+    // ★ 修正: ManageModal から ModalController へ
+    if (window.ModalController && typeof window.ModalController.init === 'function') {
+        window.ModalController.init();
     }
 
     // テーブルデータの初期読み込み
@@ -26,8 +25,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnBulkEdit = document.getElementById('btnBulkEdit');
     if (btnBulkEdit) {
         btnBulkEdit.addEventListener('click', () => {
-            if (window.ManageModal && typeof window.ManageModal.openBulkEditModal === 'function') {
-                window.ManageModal.openBulkEditModal();
+            if (window.ModalController && typeof window.ModalController.openBulkEditModal === 'function') {
+                window.ModalController.openBulkEditModal();
             }
         });
     }
@@ -35,8 +34,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnBulkDelete = document.getElementById('btnBulkDelete');
     if (btnBulkDelete) {
         btnBulkDelete.addEventListener('click', () => {
-            if (window.ManageModal && typeof window.ManageModal.openBulkDeleteModal === 'function') {
-                window.ManageModal.openBulkDeleteModal();
+            if (window.ModalController && typeof window.ModalController.openBulkDeleteModal === 'function') {
+                window.ModalController.openBulkDeleteModal();
             }
         });
     }
@@ -59,11 +58,10 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // クリアボタンのイベント
     if (btnClear && inputSearch) {
         btnClear.addEventListener('click', () => {
             inputSearch.value = ''; 
-            window.TableController.execSearch(''); // 空文字で検索（全件表示）
+            window.TableController.execSearch(''); 
         });
     }
 
@@ -71,8 +69,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnAdvanced = document.getElementById('btnAdvancedSearch');
     if (btnAdvanced) {
         btnAdvanced.addEventListener('click', () => {
-            if (window.ManageModal && typeof window.ManageModal.openAdvancedSearch === 'function') {
-                window.ManageModal.openAdvancedSearch();
+            if (window.ModalController && typeof window.ModalController.openAdvancedSearch === 'function') {
+                window.ModalController.openAdvancedSearch();
             }
         });
     }

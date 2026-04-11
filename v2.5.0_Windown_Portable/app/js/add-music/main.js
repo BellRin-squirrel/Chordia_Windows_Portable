@@ -1,6 +1,6 @@
 document.addEventListener('DOMContentLoaded', async () => {
     
-    let activeTagsKeys = []; // 保存時のデータ抽出用
+    let activeTagsKeys =[]; // 保存時のデータ抽出用
 
     try {
         // --- 動的なタグフォームの生成 ---
@@ -57,6 +57,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.SourceController.init();
     window.ArtworkController.init();
     window.LyricController.init();
+    
+    // ★追加: 一括追加タブの初期化
+    if (window.BulkController) {
+        window.BulkController.init();
+    }
 
     const loadingOverlay = document.getElementById('loadingOverlay');
     const loadingText = document.getElementById('loadingText');

@@ -45,7 +45,7 @@ else:
     BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
 # アプリバージョン定義
-appVersion = "v2.5.0-beta1"
+appVersion = "v2.5.0"
 
 LIBRARY_DIR = os.path.join(BASE_DIR, "library")
 MUSIC_DIR = os.path.join(LIBRARY_DIR, "music")
@@ -232,6 +232,66 @@ def reset_default_artwork():
         print(f"Error resetting default image: {e}")
         return False
 
+@eel.expose
+def fetch_youtube_playlist(url):
+    """
+    yt-dlp を使用して再生リストの情報を一括取得する
+    """
+    is_ok, msg = check_required_binaries()
+    if not is_ok:
+        return {'status': 'error', 'message': msg}
+    
+    command =[
+        yt_dlp_exe,
+        "--dump-json",
+        "--flat-playlist",
+        url
+    ]
+    
+    try:
+        result = subprocess.run(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding='utf-8',
+            creationflags=subprocess.CREATE_NO_WINDOW
+        )
+        
+        if result.returncode != 0:
+            return {'status': 'error', 'message': f"取得エラー: {result.stderr.strip()}"}
+            
+        videos =[]
+        for line in result.stdout.strip().split('\n'):
+            if not line: continue
+            try:
+                info = json.loads(line)
+                title = info.get('title', '')
+                if title in ['[Private video]', '[Deleted video]']:
+                    continue
+                
+                v_url = info.get('url', '')
+                if not v_url and info.get('id'):
+                    v_url = f"https://www.youtube.com/watch?v={info['id']}"
+                
+                thumbnails = info.get('thumbnails', [])
+                thumb_url = thumbnails[-1]['url'] if thumbnails else info.get('thumbnail', '')
+                
+                videos.append({
+                    'title': title,
+                    'uploader': info.get('uploader', 'Unknown'),
+                    'url': v_url,
+                    'duration': info.get('duration', 0),
+                    'thumbnail': thumb_url
+                })
+            except:
+                pass
+                
+        return {'status': 'success', 'videos': videos}
+        
+    except Exception as e:
+        return {'status': 'error', 'message': f"実行エラー: {str(e)}"}
+
 # --- 歌詞操作 API ---
 
 @eel.expose
@@ -245,6 +305,135 @@ def get_lyrics(music_filename):
         return lyrics_data.get(filename_key, "")
     except Exception:
         return ""
+
+@eel.expose
+def parse_list_import(content, file_type):
+    """JSON/CSVの内容を解析して、プレビュー用のリストを返す"""
+    import_list = []
+    try:
+        if file_type == 'json':
+            import_list = json.loads(content)
+        elif file_type == 'csv':
+            f = io.StringIO(content)
+            reader = csv.DictReader(f)
+            import_list = [row for row in reader]
+    except Exception as e:
+        return {'status': 'error', 'message': f'ファイルの解析に失敗しました: {str(e)}'}
+
+    if not import_list:
+        return {'status': 'error', 'message': 'データが空です。'}
+
+    processed_data = []
+    total = len(import_list)
+
+    for i, item in enumerate(import_list):
+        # 進捗通知
+        try:
+            eel.js_import_progress(i + 1, total, f"ファイルを解析中... {i+1} / {total}")()
+            if i % 10 == 0: eel.sleep(0.001)
+        except: pass
+
+        music_path = item.get('musicFilename')
+        image_path = item.get('imageFilename')
+        
+        # プレビュー用のデータ構造を作成
+        entry = {
+            'id': i + 1,
+            'status': 'ok' if (music_path and os.path.exists(music_path)) else 'error',
+            'musicFilename': music_path,
+            'imageFilename': image_path,
+            'lyric': item.get('lyric', ''),
+            'artwork_base64': '' 
+        }
+
+        # タグ情報をコピー
+        for key in TAG_MAP.keys():
+            entry[key] = item.get(key, '')
+
+        # 画像があればプレビュー用にBase64化
+        if image_path and os.path.exists(image_path):
+            entry['artwork_base64'] = get_image_base64(image_path)
+
+        processed_data.append(entry)
+
+    return {'status': 'success', 'data': processed_data}
+
+@eel.expose
+def execute_final_list_import(import_data_list):
+    """編集済みのリストを受け取り、実際にファイルをコピーしてDBに登録する"""
+    logs = []
+    current_db = load_db()
+    lyrics_data = {}
+    if os.path.exists(LYRIC_DB_PATH):
+        try:
+            with open(LYRIC_DB_PATH, 'r', encoding='utf-8') as f: lyrics_data = json.load(f)
+        except: pass
+
+    total = len(import_data_list)
+    success_count = 0
+
+    for i, item in enumerate(import_data_list):
+        try:
+            eel.js_import_progress(i + 1, total, f"楽曲を登録中... {i+ success_count} / {total}")()
+            eel.sleep(0.001)
+        except: pass
+
+        try:
+            title = item.get('title', 'Unknown')
+            src_music = item.get('musicFilename')
+            src_image = item.get('imageFilename')
+            
+            if not src_music or not os.path.exists(src_music):
+                logs.append({'status': 'error', 'message': f'ファイルが見つかりません: {title}'})
+                continue
+            
+            file_id = generate_file_id()
+            ext_music = os.path.splitext(src_music)[1]
+            new_music_filename = f"{file_id}{ext_music}"
+            
+            dst_music_abs = os.path.join(MUSIC_DIR, new_music_filename)
+            shutil.copy2(src_music, dst_music_abs)
+
+            dst_image_abs = ""
+            # 手動設定されたBase64画像がある場合（プレビューで変更した場合）
+            if item.get('artwork_base64') and item['artwork_base64'].startswith('data:image'):
+                b64_data = item['artwork_base64'].split(',')[1]
+                ext = ".jpg" if "image/jpeg" in item['artwork_base64'] else ".png"
+                dst_image_abs = os.path.join(IMAGE_DIR, f"{file_id}{ext}")
+                with open(dst_image_abs, 'wb') as f:
+                    f.write(base64.b64decode(b64_data))
+            # 元のファイルパスがある場合
+            elif src_image and os.path.exists(src_image):
+                ext_image = os.path.splitext(src_image)[1]
+                dst_image_abs = os.path.join(IMAGE_DIR, f"{file_id}{ext_image}")
+                shutil.copy2(src_image, dst_image_abs)
+
+            db_entry = {
+                "musicFilename": make_relative_path(dst_music_abs),
+                "imageFilename": make_relative_path(dst_image_abs),
+                "lyric": item.get('lyric', '')
+            }
+            for key in TAG_MAP.keys():
+                db_entry[key] = item.get(key, '')
+            
+            current_db.append(db_entry)
+            if db_entry["lyric"]:
+                lyrics_data[new_music_filename] = db_entry["lyric"]
+
+            success_count += 1
+            logs.append({'status': 'success', 'message': f'登録: {title}'})
+        except Exception as e:
+            logs.append({'status': 'error', 'message': f'エラー ({title}): {str(e)}'})
+
+    save_db(current_db)
+    try:
+        with open(LYRIC_DB_PATH, 'w', encoding='utf-8') as f:
+            json.dump(lyrics_data, f, indent=4, ensure_ascii=False)
+    except: pass
+    
+    set_mp3_tag(notify_progress=True)
+    
+    return {'status': 'success', 'count': success_count, 'total': total, 'logs': logs}
 
 @eel.expose
 def record_playback(song_data):
@@ -984,7 +1173,8 @@ def set_mp3_tag(notify=False, notify_progress=False):
         if notify_progress:
             try:
                 if i % 10 == 0 or i == total - 1:
-                    eel.js_import_progress(i + 1, total, f"タグ情報更新中... {i+1}/{total}")
+                    # ★修正: 末尾に()を追加して実行
+                    eel.js_import_progress(i + 1, total, f"タグ情報更新中... {i+1}/{total}")()
                     eel.sleep(0.001)
             except Exception:
                 pass
@@ -999,11 +1189,10 @@ def set_mp3_tag(notify=False, notify_progress=False):
             
             lyric = item.get('lyric', '')
             if lyric:
-                audio.tags.setall('USLT', [USLT(encoding=3, lang='eng', desc='', text=str(lyric))])
+                audio.tags.setall('USLT',[USLT(encoding=3, lang='eng', desc='', text=str(lyric))])
             else:
                 audio.tags.delall('USLT')
                 
-            # ★修正: 画像パスも絶対パスに変換して読み込む
             i_path = resolve_db_path(item.get('imageFilename'))
             if i_path and os.path.exists(i_path):
                 with open(i_path, 'rb') as f:
@@ -1185,10 +1374,10 @@ def download_and_save_music(data):
         f_id = ''.join(random.choices(string.ascii_lowercase + string.digits, k=32))
         m_path_abs = os.path.join(MUSIC_DIR, f"{f_id}.mp3")
 
-        # --ffmpeg-location は実行ファイルのパスではなくディレクトリパスを指定する必要があるため
-        # os.path.dirname(ffmpeg_exe) を使用します。
+        # --no-playlist フラグを追加してプレイリストURLを渡されても単一動画として処理する
         command = [
             yt_dlp_exe,
+            "--no-playlist",
             "--extract-audio",
             "--audio-format", "mp3",
             "--audio-quality", "0", # 最高品質(VBR)
@@ -1268,10 +1457,14 @@ def download_and_save_music(data):
         print(f"Download and Save Error: {e}")
         return False
 
+    except Exception as e:
+        print(f"Download and Save Error: {e}")
+        return False
+
 @eel.expose
 def execute_import(content, file_type):
     logs = []
-    import_list = []
+    import_list =[]
     try:
         if file_type == 'json':
             import_list = json.loads(content)
@@ -1279,14 +1472,14 @@ def execute_import(content, file_type):
             f = io.StringIO(content)
             reader = csv.DictReader(f)
             if 'musicFilename' not in reader.fieldnames:
-                return [{'status': 'error', 'message': 'CSVヘッダーエラー'}]
+                return[{'status': 'error', 'message': 'CSVヘッダーエラー'}]
             for row in reader:
                 import_list.append(row)
     except Exception as e:
-        return [{'status': 'error', 'message': str(e)}]
+        return[{'status': 'error', 'message': str(e)}]
 
     if not import_list:
-        return [{'status': 'error', 'message': 'データなし'}]
+        return[{'status': 'error', 'message': 'データなし'}]
 
     current_db = load_db()
     lyrics_data = {}
@@ -1297,18 +1490,20 @@ def execute_import(content, file_type):
 
     total_count = len(import_list)
     success_count = 0
-    
-    # (進捗通知部分は省略)
 
     for i, item in enumerate(import_list):
+        # ★ 進捗通知とブロック防止
+        try:
+            eel.js_import_progress(i + 1, total_count, f"リストから楽曲をインポート中... {i+1} / {total_count}")()
+            if i % 2 == 0 or i == total_count - 1:
+                eel.sleep(0.001)
+        except: pass
+
         try:
             title = item.get('title', 'Unknown')
-            # インポート元のパスは絶対パスである前提（ユーザーのローカルファイル等）
             src_music = item.get('musicFilename')
             src_image = item.get('imageFilename')
             
-            # (進捗通知)
-
             if not src_music or not os.path.exists(src_music):
                 logs.append({'status': 'error', 'message': f'楽曲なし: {title}'})
                 continue
@@ -1317,7 +1512,6 @@ def execute_import(content, file_type):
             ext_music = os.path.splitext(src_music)[1]
             new_music_filename = f"{file_id}{ext_music}"
             
-            # 実体コピー先（絶対パス）
             dst_music_abs = os.path.join(MUSIC_DIR, new_music_filename)
             shutil.copy2(src_music, dst_music_abs)
 
@@ -1328,7 +1522,6 @@ def execute_import(content, file_type):
                 dst_image_abs = os.path.join(IMAGE_DIR, new_image_filename)
                 shutil.copy2(src_image, dst_image_abs)
 
-            # ★修正: DBエントリには相対パスを使用
             db_entry = {
                 "musicFilename": make_relative_path(dst_music_abs),
                 "imageFilename": make_relative_path(dst_image_abs)
@@ -1339,7 +1532,6 @@ def execute_import(content, file_type):
             current_db.append(db_entry)
             
             if "lyric" in item and item["lyric"]:
-                # 歌詞JSONのキーはファイル名のみなので変更なし
                 lyrics_data[new_music_filename] = item["lyric"]
 
             success_count += 1
@@ -1349,7 +1541,6 @@ def execute_import(content, file_type):
 
     save_db(current_db)
     
-    # (歌詞保存、タグ書き込みなどは省略)
     try:
         with open(LYRIC_DB_PATH, 'w', encoding='utf-8') as f:
             json.dump(lyrics_data, f, indent=4, ensure_ascii=False)
@@ -1385,6 +1576,7 @@ def fetch_video_info(url):
     if not is_ok:
         return {'status': 'error', 'message': msg}
     
+    # --no-playlist を含めてプレイリスト情報を無視するようにする
     command = [
         yt_dlp_exe,
         "--dump-json",
@@ -1890,6 +2082,7 @@ def duplicate_playlist_by_id(pl_id):
 def scan_mp3_zip(zip_path, password=None):
     """
     ZIP内のMP3をスキャンし、タグ情報とアルバムアート、歌詞を取得して返す。
+    進捗表示を「展開」と「解析」の2段階で行う。
     """
     import tempfile
     if not os.path.exists(zip_path):
@@ -1900,65 +2093,92 @@ def scan_mp3_zip(zip_path, password=None):
 
     try:
         with pyzipper.AESZipFile(zip_path, 'r') as zf:
-            try:
-                zf.extractall(temp_dir, pwd=pwd_bytes)
-            except Exception as e:
-                shutil.rmtree(temp_dir, ignore_errors=True)
-                if 'password' in str(e).lower() or 'bad password' in str(e).lower():
-                    return {'status': 'password_required'}
-                return {'status': 'error', 'message': f'ZIP展開エラー: {str(e)}'}
+            # 1. 展開フェーズ
+            all_files = zf.infolist()
+            total_files_in_zip = len(all_files)
+            
+            for i, member in enumerate(all_files):
+                # 進捗通知: 展開中
+                try:
+                    # 全体の50%までを展開フェーズとして表示
+                    progress_val = int((i + 1) / total_files_in_zip * 100)
+                    eel.js_import_progress(i + 1, total_files_in_zip, f"ZIPを展開中... {i+1} / {total_files_in_zip}")()
+                    # 負荷軽減とUI更新のためのsleep
+                    if i % 5 == 0 or i == total_files_in_zip - 1:
+                        eel.sleep(0.001)
+                except: pass
 
+                try:
+                    zf.extract(member, temp_dir, pwd=pwd_bytes)
+                except Exception as e:
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    if 'password' in str(e).lower() or 'bad password' in str(e).lower():
+                        return {'status': 'password_required'}
+                    return {'status': 'error', 'message': f'ZIP展開エラー: {str(e)}'}
+
+        # 2. 解析フェーズ
         result_list = []
         id_counter = 1
         config = load_settings()
         active_tags = config.get('Tags', 'active_tags').split(',')
 
+        # 解析対象のMP3リストを作成
+        mp3_files = []
         for root, dirs, files in os.walk(temp_dir):
             for file in files:
                 if file.lower().endswith('.mp3'):
-                    full_path = os.path.join(root, file)
-                    rel_path = os.path.relpath(full_path, temp_dir)
+                    mp3_files.append(os.path.join(root, file))
                     
-                    item = {
-                        'id': id_counter,
-                        'temp_path': full_path,
-                        'rel_path': rel_path,
-                        'status': 'ok',
-                        'lyric': '',
-                        'artwork_base64': '' # プレビュー用
-                    }
-                    
-                    try:
-                        audio = MP3(full_path, ID3=ID3)
-                        if audio.tags:
-                            # タグの取得
-                            for key, tag_def in TAG_MAP.items():
-                                frame = audio.tags.get(tag_def['id3'].__name__)
-                                if frame:
-                                    item[key] = frame.text[0] if hasattr(frame, 'text') and frame.text else str(frame)
-                                else:
-                                    item[key] = ""
-                            
-                            # 歌詞 (USLT)
-                            uslt = audio.tags.getall('USLT')
-                            if uslt:
-                                item['lyric'] = uslt[0].text.replace('\r\n', '\n').replace('\r', '\n')
-                            
-                            # アルバムアート抽出
-                            apic = audio.tags.getall('APIC')
-                            if apic:
-                                img_data = apic[0].data
-                                encoded = base64.b64encode(img_data).decode('utf-8')
-                                mime = apic[0].mime
-                                item['artwork_base64'] = f"data:{mime};base64,{encoded}"
-                    except Exception:
-                        pass
+        total_mp3 = len(mp3_files)
+        if total_mp3 == 0:
+            return {'status': 'error', 'message': 'ZIP内にMP3ファイルが見つかりませんでした。'}
 
-                    if not item.get('title') or not item.get('artist'):
-                        item['status'] = 'missing_meta'
+        for i, full_path in enumerate(mp3_files):
+            # 進捗通知: 解析中
+            try:
+                eel.js_import_progress(i + 1, total_mp3, f"楽曲情報を解析中... {i+1} / {total_mp3}")()
+                # UIフリーズ防止
+                eel.sleep(0.001)
+            except: pass
+
+            rel_path = os.path.relpath(full_path, temp_dir)
+            item = {
+                'id': id_counter,
+                'temp_path': full_path,
+                'rel_path': rel_path,
+                'status': 'ok',
+                'lyric': '',
+                'artwork_base64': ''
+            }
+            
+            try:
+                audio = MP3(full_path, ID3=ID3)
+                if audio.tags:
+                    for key, tag_def in TAG_MAP.items():
+                        frame = audio.tags.get(tag_def['id3'].__name__)
+                        if frame:
+                            item[key] = frame.text[0] if hasattr(frame, 'text') and frame.text else str(frame)
+                        else:
+                            item[key] = ""
                     
-                    result_list.append(item)
-                    id_counter += 1
+                    uslt = audio.tags.getall('USLT')
+                    if uslt:
+                        item['lyric'] = uslt[0].text.replace('\r\n', '\n').replace('\r', '\n')
+                    
+                    apic = audio.tags.getall('APIC')
+                    if apic:
+                        img_data = apic[0].data
+                        encoded = base64.b64encode(img_data).decode('utf-8')
+                        mime = apic[0].mime
+                        item['artwork_base64'] = f"data:{mime};base64,{encoded}"
+            except Exception:
+                pass
+
+            if not item.get('title') or not item.get('artist'):
+                item['status'] = 'missing_meta'
+            
+            result_list.append(item)
+            id_counter += 1
 
         return {
             'status': 'success',
@@ -1968,7 +2188,8 @@ def scan_mp3_zip(zip_path, password=None):
         }
 
     except Exception as e:
-        shutil.rmtree(temp_dir, ignore_errors=True)
+        if os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir, ignore_errors=True)
         return {'status': 'error', 'message': str(e)}
     
 @eel.expose
@@ -2003,24 +2224,30 @@ def scan_mp3_zip_from_data(base64_zip, password=None):
 
 @eel.expose
 def execute_mp3_zip_import(import_data_list, temp_dir):
-    # (前半省略)
-    logs = []
+    logs =[]
     success_count = 0
     total_count = len(import_data_list)
     current_db = load_db()
     lyrics_data = {}
     if os.path.exists(LYRIC_DB_PATH):
         try:
-            with open(LYRIC_DB_PATH, 'r', encoding='utf-8') as f: lyrics_data = json.load(f)
+            with open(LYRIC_DB_PATH, 'r', encoding='utf-8') as f: 
+                lyrics_data = json.load(f)
         except: pass
 
     try:
         for i, item in enumerate(import_data_list):
+            # ★ 進捗通知とブロック防止
+            try:
+                eel.js_import_progress(i + 1, total_count, f"楽曲を登録中... {i+1} / {total_count}")()
+                if i % 2 == 0 or i == total_count - 1:
+                    eel.sleep(0.001)
+            except: pass
+
             src_path = item.get('temp_path')
             title = item.get('title', 'Unknown')
             
             try:
-                # (進捗通知)
                 if not os.path.exists(src_path):
                     logs.append({'status': 'error', 'message': f'ファイル消失: {item.get("rel_path")}'})
                     continue
@@ -2029,7 +2256,6 @@ def execute_mp3_zip_import(import_data_list, temp_dir):
                 ext = os.path.splitext(src_path)[1]
                 new_music_filename = f"{file_id}{ext}"
                 
-                # 実体パス（絶対パス）
                 dst_music_abs = os.path.join(MUSIC_DIR, new_music_filename)
                 
                 # 1. アルバムアート抽出
@@ -2073,7 +2299,7 @@ def execute_mp3_zip_import(import_data_list, temp_dir):
                     
                     lyric = item.get('lyric', '')
                     if lyric:
-                        audio.tags.setall('USLT', [USLT(encoding=3, lang='eng', desc='', text=str(lyric))])
+                        audio.tags.setall('USLT',[USLT(encoding=3, lang='eng', desc='', text=str(lyric))])
                     
                     if img_path_abs and os.path.exists(img_path_abs):
                         mime_type = 'image/jpeg' if img_path_abs.lower().endswith('.jpg') else 'image/png'
@@ -2082,7 +2308,6 @@ def execute_mp3_zip_import(import_data_list, temp_dir):
                     
                     audio.save()
                     
-                    # ★修正: DBには相対パスで保存
                     db_entry = {
                         "musicFilename": make_relative_path(dst_music_abs),
                         "imageFilename": make_relative_path(img_path_abs),
@@ -2102,7 +2327,6 @@ def execute_mp3_zip_import(import_data_list, temp_dir):
             except Exception as e:
                 logs.append({'status': 'error', 'message': f'処理エラー {title}: {e}'})
 
-        # (保存処理省略)
         save_db(current_db)
         try:
             with open(LYRIC_DB_PATH, 'w', encoding='utf-8') as f: json.dump(lyrics_data, f, indent=4, ensure_ascii=False)
@@ -2138,7 +2362,6 @@ def delete_multiple_songs(basenames):
         deleted_count = 0
         
         for item in db:
-            # DBのパスをファイル名に変換してセットと比較
             fname = os.path.basename(item.get('musicFilename', ''))
             if fname in targets:
                 m = resolve_db_path(item.get('musicFilename', ''))
@@ -2148,6 +2371,7 @@ def delete_multiple_songs(basenames):
                     try: os.remove(m)
                     except: pass
                 if img and os.path.exists(img):
+                    # デフォルト画像は削除しない
                     if "default.png" not in os.path.basename(img).lower():
                         try: os.remove(img)
                         except: pass
@@ -2158,20 +2382,18 @@ def delete_multiple_songs(basenames):
         save_db(new_db)
         return {'success': True, 'count': deleted_count}
     except Exception as e:
+        print(f"Bulk Delete Error: {e}")
         return {'success': False, 'message': str(e)}
 
 @eel.expose
 def update_multiple_songs(basenames, updates):
-    """
-    basenames: ファイル名のリスト
-    updates: { 'title': '< 維持 >', 'artist': 'New Artist', ... }
-    """
+    """選択された複数の楽曲タグを一括更新する"""
     try:
         db = load_db()
         target_names = set(basenames)
         updated_count = 0
         
-        # ★修正: "< 維持 >" の場合は更新対象から除外する
+        # "< 維持 >" は更新対象外とする
         real_updates = {k: v for k, v in updates.items() if v != "< 維持 >"}
         
         if not real_updates:
@@ -2187,29 +2409,21 @@ def update_multiple_songs(basenames, updates):
         
         if updated_count > 0:
             save_db(db)
+            # 各ファイルのID3タグも更新
             for item in target_items:
                 path = resolve_db_path(item.get('musicFilename'))
-                if path and os.path.exists(path):
+                if path and os.path.exists(path) and path.lower().endswith('.mp3'):
                     try:
                         audio = MP3(path)
                         if audio.tags is None: audio.add_tags()
-                        
-                        # 更新内容に基づきタグを再設定
                         for k, t_def in TAG_MAP.items():
                             if k in real_updates:
                                 audio.tags.add(t_def['id3'](encoding=3, text=str(real_updates[k])))
-                        
-                        # 歌詞更新
-                        if 'lyric' in real_updates:
-                            lyric = real_updates['lyric']
-                            if lyric: audio.tags.setall('USLT', [USLT(encoding=3, lang='eng', desc='', text=str(lyric))])
-                            else: audio.tags.delall('USLT')
-                        
                         audio.save()
-                    except Exception as e:
-                        print(f"Tag Write Error: {e}")
+                    except: pass
         return {'success': True, 'count': updated_count}
     except Exception as e:
+        print(f"Bulk Update Error: {e}")
         return {'success': False, 'message': str(e)}
 
 @eel.expose

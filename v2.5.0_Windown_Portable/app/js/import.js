@@ -14,6 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let tempDir = null;
     let activeTags = [];
     let currentEditIndex = -1;
+    let importMode = 'list'; // 'list' or 'zip'
 
     // --- Tab Switching ---
     const tabs = document.querySelectorAll('.tab-btn');
@@ -25,6 +26,7 @@ document.addEventListener('DOMContentLoaded', () => {
             tab.classList.add('active');
             document.getElementById(tab.dataset.tab).classList.add('active');
             logArea.style.display = 'none';
+            importMode = tab.dataset.tab === 'tab-list' ? 'list' : 'zip';
         });
     });
 
@@ -45,8 +47,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // ============================================================
     const dropArea = document.getElementById('dropArea');
     const fileInput = document.getElementById('fileInput');
-    const btnImport = document.getElementById('btnImport');
+    const btnScanList = document.getElementById('btnScanList');
     const fileInfo = document.getElementById('fileInfo');
+    const listResultSection = document.getElementById('listResultSection');
+    const listUploadSection = document.getElementById('listUploadSection');
 
     dropArea.onclick = () => fileInput.click();
     setupDragAndDrop(dropArea, (file) => handleListFile(file));
@@ -58,23 +62,48 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('fileName').textContent = file.name;
         dropArea.style.display = 'none';
         fileInfo.style.display = 'flex';
-        btnImport.disabled = false;
+        btnScanList.disabled = false;
     }
 
     document.getElementById('btnClearFile').onclick = () => {
-        selectedFile = null; fileInput.value = ''; dropArea.style.display = 'block'; fileInfo.style.display = 'none'; btnImport.disabled = true;
+        selectedFile = null; fileInput.value = ''; dropArea.style.display = 'block'; fileInfo.style.display = 'none'; btnScanList.disabled = true;
     };
 
-    btnImport.onclick = () => {
+    btnScanList.onclick = () => {
         const reader = new FileReader();
         reader.onload = async (e) => {
-            uiStartProcess("データを読み込み中...");
+            uiStartProcess("リストを解析中...");
             const ext = selectedFile.name.split('.').pop().toLowerCase();
-            const logs = await eel.execute_import(e.target.result, ext)();
+            const res = await eel.parse_list_import(e.target.result, ext)();
             uiEndProcess();
-            showAlert("完了", "インポートが完了しました。");
+            if (res.status === 'success') {
+                scannedData = res.data;
+                const settings = await eel.get_app_settings()();
+                activeTags = settings.active_tags;
+                renderTable('list');
+                listUploadSection.style.display = 'none';
+                listResultSection.style.display = 'block';
+            } else {
+                showAlert("エラー", res.message);
+            }
         };
         reader.readAsText(selectedFile);
+    };
+
+    document.getElementById('btnRescanList').onclick = () => {
+        scannedData = []; listResultSection.style.display = 'none'; listUploadSection.style.display = 'block'; document.getElementById('btnClearFile').click();
+    };
+
+    document.getElementById('btnExecListImport').onclick = async () => {
+        uiStartProcess("楽曲を登録中...");
+        const res = await eel.execute_final_list_import(scannedData)();
+        uiEndProcess();
+        if (res.status === 'success') {
+            showAlert("完了", `${res.count}曲登録しました。`);
+            document.getElementById('btnRescanList').click();
+        } else {
+            showAlert("エラー", res.message);
+        }
     };
 
     // ============================================================
@@ -121,9 +150,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 scannedData = res.data;
                 tempDir = res.temp_dir;
                 activeTags = res.active_tags;
-                renderMp3Table();
+                renderTable('zip');
                 zipUploadSection.style.display = 'none';
-                document.getElementById('zipActionArea').style.display = 'none';
                 zipResultSection.style.display = 'block';
                 uiEndProcess();
             } else {
@@ -134,16 +162,29 @@ document.addEventListener('DOMContentLoaded', () => {
         reader.readAsDataURL(selectedZipFile);
     }
 
+    btnRescan.onclick = () => {
+        scannedData = []; zipResultSection.style.display = 'none'; zipUploadSection.style.display = 'block'; document.getElementById('btnClearZipFile').click();
+    };
+
     document.getElementById('btnSubmitPass').onclick = () => {
         const pwd = document.getElementById('zipPassword').value;
         document.getElementById('passwordModal').style.display = 'none';
         startZipAnalysis(pwd);
     };
-    document.getElementById('btnCancelPass').onclick = () => document.getElementById('passwordModal').style.display = 'none';
+    // ★追加: パスワードモーダルのキャンセル
+    document.getElementById('btnCancelPass').onclick = () => {
+        document.getElementById('passwordModal').style.display = 'none';
+    };
 
-    function renderMp3Table() {
-        const thead = document.getElementById('mp3TableHeader');
-        const tbody = document.getElementById('mp3TableBody');
+    // ============================================================
+    //  共通テーブル描画 & 編集
+    // ============================================================
+    function renderTable(type) {
+        const theadId = type === 'list' ? 'listTableHeader' : 'mp3TableHeader';
+        const tbodyId = type === 'list' ? 'listTableBody' : 'mp3TableBody';
+        const thead = document.getElementById(theadId);
+        const tbody = document.getElementById(tbodyId);
+
         let h = `<tr><th>状態</th><th>No.</th><th>パス</th><th>アート</th><th>タイトル *</th><th>アーティスト *</th>`;
         activeTags.forEach(t => { if(t!=='title' && t!=='artist') h += `<th>${t}</th>`; });
         h += `<th>操作</th></tr>`;
@@ -153,7 +194,8 @@ document.addEventListener('DOMContentLoaded', () => {
         scannedData.forEach((item, idx) => {
             const tr = document.createElement('tr');
             const artSrc = item.artwork_base64 || 'icon/Chordia.png';
-            let row = `<td>${item.status==='ok'?'OK':'要確認'}</td><td>${item.id}</td><td class="col-path" title="${item.rel_path}">${item.rel_path}</td>
+            const path = type === 'list' ? item.musicFilename : item.rel_path;
+            let row = `<td>${item.status==='ok'?'OK':'エラー'}</td><td>${item.id}</td><td class="col-path" title="${path}">${path}</td>
                 <td class="col-art-thumb"><img src="${artSrc}"></td>
                 <td><input type="text" class="edit-input" value="${item.title||''}" onchange="updateScanned(${idx}, 'title', this.value)"></td>
                 <td><input type="text" class="edit-input" value="${item.artist||''}" onchange="updateScanned(${idx}, 'artist', this.value)"></td>`;
@@ -168,75 +210,44 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    window.updateScanned = (idx, key, val) => { scannedData[idx][key] = val; scannedData[idx].status = (scannedData[idx].title && scannedData[idx].artist) ? 'ok' : 'missing_meta'; renderMp3Table(); };
-    window.deleteScanned = (idx) => { scannedData.splice(idx, 1); renderMp3Table(); };
-
-    btnRescan.onclick = () => {
-        scannedData = []; zipResultSection.style.display = 'none'; zipUploadSection.style.display = 'block'; document.getElementById('zipActionArea').style.display = 'block'; document.getElementById('btnClearZipFile').click();
+    window.updateScanned = (idx, key, val) => { 
+        scannedData[idx][key] = val; 
+        renderTable(importMode); 
+    };
+    window.deleteScanned = (idx) => { 
+        scannedData.splice(idx, 1); 
+        renderTable(importMode); 
     };
 
-    // 歌詞編集
+    // --- 歌詞編集 ---
     const lyricModal = document.getElementById('lyricModal');
     window.openLyricsModal = (idx) => { currentEditIndex = idx; document.getElementById('lyricTextArea').value = scannedData[idx].lyric || ''; lyricModal.style.display = 'flex'; };
     document.getElementById('btnCancelLyric').onclick = () => lyricModal.style.display = 'none';
     document.getElementById('btnSaveLyric').onclick = () => { scannedData[currentEditIndex].lyric = document.getElementById('lyricTextArea').value; lyricModal.style.display = 'none'; showToast("反映しました"); };
     
-    document.getElementById('btnAutoLyric').onclick = async () => {
-        const item = scannedData[currentEditIndex];
-        if(!item.title || !item.artist) { showToast("タイトルとアーティストが必要です", true); return; }
-        const btn = document.getElementById('btnAutoLyric');
-        btn.textContent = "検索中..."; btn.disabled = true;
-        try {
-            const res = await fetch(`https://lrclib.net/api/search?track_name=${encodeURIComponent(item.title)}&artist_name=${encodeURIComponent(item.artist)}`);
-            const data = await res.json();
-            const filtered = data.filter(d => d.plainLyrics);
-            if(filtered.length > 0) {
-                const list = document.getElementById('lyricResultList');
-                list.innerHTML = '';
-                filtered.forEach(d => {
-                    const li = document.createElement('li'); li.className = 'lyric-result-item'; li.innerHTML = `<strong>${d.trackName}</strong><br><small>${d.artistName}</small>`;
-                    li.onclick = () => { document.getElementById('lyricTextArea').value = d.plainLyrics; document.getElementById('lyricSearchModal').style.display = 'none'; };
-                    list.appendChild(li);
-                });
-                document.getElementById('lyricSearchModal').style.display = 'flex';
-            } else { showToast("見つかりませんでした", true); }
-        } catch(e) { showToast("エラー", true); } finally { btn.textContent = "自動取得 (LRCLIB)"; btn.disabled = false; }
-    };
-    document.getElementById('btnCloseSearch').onclick = () => document.getElementById('lyricSearchModal').style.display = 'none';
-
-    // アートワーク編集モーダル拡張ロジック
+    // --- アートワーク編集 ---
     const artModal = document.getElementById('artModal');
     const artPreview = document.getElementById('currentArtPreview');
+    
     window.openArtModal = (idx) => {
         currentEditIndex = idx;
         artPreview.src = scannedData[idx].artwork_base64 || 'icon/Chordia.png';
-        document.getElementById('miniVideoUrl').value = '';
-        document.getElementById('miniImageUrl').value = '';
         artModal.style.display = 'flex';
-        // ローカルタブを初期選択
-        document.querySelector('.art-mini-tab-btn[data-target="art-mini-local"]').click();
     };
 
-    // ミニタブ切替
-    const miniTabs = document.querySelectorAll('.art-mini-tab-btn');
-    miniTabs.forEach(btn => {
-        btn.onclick = async () => {
-            const target = btn.dataset.target;
-            // ツールチェックが必要なタブか確認
-            if (target === 'art-mini-video') {
-                const status = await eel.check_tools_status()();
-                if (!status['yt-dlp'] || !status['ffmpeg']) {
-                    showToast("動画機能を利用するには拡張機能（yt-dlp, ffmpeg）をインストールしてください", true);
-                    return; // 切り替えない
-                }
-            }
-            miniTabs.forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.art-mini-tab-content').forEach(c => c.classList.remove('active'));
-            btn.classList.add('active');
-            document.getElementById(target).classList.add('active');
-        };
-    });
+    // ★修正: アートワークモーダルのキャンセルボタン
+    document.getElementById('btnCancelArt').onclick = () => {
+        artModal.style.display = 'none';
+    };
 
+    document.getElementById('btnSaveArt').onclick = () => {
+        scannedData[currentEditIndex].artwork_base64 = artPreview.src;
+        artModal.style.display = 'none';
+        renderTable(importMode);
+        showToast("反映しました");
+    };
+
+    // アートワーク編集内の画像選択処理
     document.getElementById('newArtInput').onchange = (e) => {
         const file = e.target.files[0];
         if(!file) return;
@@ -245,51 +256,7 @@ document.addEventListener('DOMContentLoaded', () => {
         reader.readAsDataURL(file);
     };
 
-    // 動画URLから取得
-    document.getElementById('btnFetchVideoArt').onclick = async () => {
-        const url = document.getElementById('miniVideoUrl').value.trim();
-        if (!url) return;
-        const btn = document.getElementById('btnFetchVideoArt');
-        btn.disabled = true; btn.textContent = "取得中...";
-        try {
-            const info = await eel.fetch_video_info(url)();
-            if (info.status === 'success' && info.thumbnail) {
-                const b64 = await eel.fetch_and_crop_thumbnail(info.thumbnail)();
-                if (b64) artPreview.src = b64;
-                showToast("サムネイルを取得しました");
-            } else { showToast(info.message || "取得失敗", true); }
-        } catch(e) { showToast("エラー", true); }
-        finally { btn.disabled = false; btn.textContent = "サムネを取得"; }
-    };
-
-    // 画像URLから取得
-    document.getElementById('btnFetchDirectArt').onclick = async () => {
-        const url = document.getElementById('miniImageUrl').value.trim();
-        if (!url) return;
-        const btn = document.getElementById('btnFetchDirectArt');
-        btn.disabled = true; btn.textContent = "取得中...";
-        try {
-            const res = await eel.fetch_and_crop_image_url(url)();
-            if (res.status === 'success') {
-                artPreview.src = res.data;
-                showToast("画像を取得しました");
-            } else { showToast(res.message, true); }
-        } catch(e) { showToast("エラー", true); }
-        finally { btn.disabled = false; btn.textContent = "画像を取得"; }
-    };
-
-    document.getElementById('btnRemoveArt').onclick = () => artPreview.src = 'icon/Chordia.png';
-    document.getElementById('btnCancelArt').onclick = () => artModal.style.display = 'none';
-    document.getElementById('btnSaveArt').onclick = () => {
-        scannedData[currentEditIndex].artwork_base64 = artPreview.src.includes('Chordia.png') ? '' : artPreview.src;
-        artModal.style.display = 'none';
-        renderMp3Table();
-        showToast("反映しました");
-    };
-
     document.getElementById('btnExecZipImport').onclick = async () => {
-        const errors = scannedData.filter(d => d.status === 'missing_meta');
-        if (errors.length > 0 && !confirm("未入力の項目があります。登録を続行しますか？")) return;
         uiStartProcess("楽曲を追加中...");
         const res = await eel.execute_mp3_zip_import(scannedData, tempDir)();
         uiEndProcess();

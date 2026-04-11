@@ -38,9 +38,9 @@
 
             <!-- TAB 1: JSON/CSVインポート -->
             <div id="tab-list" class="tab-content active">
-                <section class="import-section">
+                <section class="import-section" id="listUploadSection">
                     <h2 class="section-title">ファイルを選択</h2>
-                    <p class="desc-text">既存の楽曲管理リスト（JSON/CSV）を読み込み、データベースに登録します。</p>
+                    <p class="desc-text">既存の楽曲管理リスト（JSON/CSV）を読み込みます。読み込み後に内容を確認・編集できます。</p>
                     <div class="file-drop-area" id="dropArea">
                         <p class="main-msg">ここにファイルをドラッグ＆ドロップ</p>
                         <p class="sub-msg">またはクリックしてファイルを選択 (JSON / CSV)</p>
@@ -50,10 +50,27 @@
                         <span class="file-name" id="fileName">music.json</span>
                         <button class="btn-clear" id="btnClearFile">✕</button>
                     </div>
+                    <div class="action-area" id="listActionArea">
+                        <button id="btnScanList" class="btn-import" disabled>リストを解析</button>
+                    </div>
                 </section>
-                <div class="action-area">
-                    <button id="btnImport" class="btn-import" disabled>インポートを実行</button>
-                </div>
+
+                <!-- 解析結果表示 -->
+                <section class="import-section" id="listResultSection" style="display: none;">
+                    <div class="result-header">
+                        <h2>リスト読み込み結果</h2>
+                        <button id="btnRescanList" class="btn-secondary">ファイルを再選択</button>
+                    </div>
+                    <div class="table-container">
+                        <table class="mp3-table" id="listTable">
+                            <thead id="listTableHeader"></thead>
+                            <tbody id="listTableBody"></tbody>
+                        </table>
+                    </div>
+                    <div class="action-area" style="margin-top: 20px;">
+                        <button id="btnExecListImport" class="btn-import">表示されている楽曲をすべて登録</button>
+                    </div>
+                </section>
             </div>
 
             <!-- TAB 2: MP3 ZIPダイレクトインポート -->
@@ -106,7 +123,7 @@
         </main>
     </div>
 
-    <!-- 各種モーダル -->
+    <!-- 各種モーダル (中身は変更なし) -->
     <div id="passwordModal" class="modal-overlay">
         <div class="modal-content" style="width: 400px;">
             <h3>パスワードが必要です</h3>
@@ -144,39 +161,31 @@
     <div id="artModal" class="modal-overlay">
         <div class="modal-content" style="width: 450px;">
             <h3>アートワーク編集</h3>
-            
-            <!-- ミニタブバー -->
             <div class="art-tabs-mini">
                 <button class="art-mini-tab-btn active" data-target="art-mini-local">ローカル</button>
                 <button class="art-mini-tab-btn" data-target="art-mini-video">動画URL</button>
                 <button class="art-mini-tab-btn" data-target="art-mini-image">画像URL</button>
             </div>
-
             <div id="art-mini-local" class="art-mini-tab-content active">
                 <button class="btn-secondary" style="width: 100%; margin-bottom: 12px;" onclick="document.getElementById('newArtInput').click()">PCから画像を選択</button>
             </div>
-
             <div id="art-mini-video" class="art-mini-tab-content">
                 <div class="input-row">
                     <input type="text" id="miniVideoUrl" class="edit-input" placeholder="YouTubeなどの動画URLを入力...">
                     <button id="btnFetchVideoArt" class="btn-primary" style="padding: 10px; margin-top: 8px; width: 100%;">サムネを取得</button>
                 </div>
             </div>
-
             <div id="art-mini-image" class="art-mini-tab-content">
                 <div class="input-row">
                     <input type="text" id="miniImageUrl" class="edit-input" placeholder="画像の直接URLを入力...">
                     <button id="btnFetchDirectArt" class="btn-primary" style="padding: 10px; margin-top: 8px; width: 100%;">画像を取得</button>
                 </div>
             </div>
-
             <img id="currentArtPreview" src="icon/Chordia.png" style="width: 200px; height: 200px; object-fit: cover; border-radius: 12px; margin: 16px auto; display: block; box-shadow: var(--shadow-md);">
-            
             <div style="display: flex; gap: 12px;">
                 <button class="btn-secondary" id="btnRemoveArt" style="flex: 1; color: #ef4444;">画像を削除</button>
                 <input type="file" id="newArtInput" accept="image/*" hidden>
             </div>
-
             <div class="modal-buttons">
                 <button class="btn-secondary" id="btnCancelArt">キャンセル</button>
                 <button class="btn-primary" id="btnSaveArt">反映</button>
