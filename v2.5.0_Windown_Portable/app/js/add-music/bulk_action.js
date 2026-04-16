@@ -34,7 +34,7 @@
                     this.renderTable();
                     this.processThumbnailsBackground();
                 } else {
-                    u.showAlert(res.message);
+                    u.showAlert("エラー", res.message);
                 }
             } catch(e) {
                 u.showToast("通信エラーが発生しました", true);
@@ -75,8 +75,15 @@
                 const item = this.scannedData[i];
                 text.textContent = `一括追加中... ${i + 1} / ${total}`;
                 
+                // ★追加: プレイリスト特有のパラメータを除外し、単体動画のクリーンなURLを再構築する
+                let cleanUrl = item.url;
+                const match = item.url.match(/[?&]v=([^&]+)/) || item.url.match(/youtu\.be\/([^?]+)/) || item.url.match(/youtube\.com\/shorts\/([^?]+)/);
+                if (match && match[1]) {
+                    cleanUrl = `https://www.youtube.com/watch?v=${match[1]}`;
+                }
+                
                 const payload = {
-                    video_url: item.url,
+                    video_url: cleanUrl,
                     artwork_data: item.artwork_base64,
                     lyric: item.lyric,
                     title: item.title,
@@ -100,9 +107,9 @@
             overlay.style.display = 'none';
             btn.disabled = false;
 
-            u.showAlert(`${successCount}曲の追加が完了しました。\n(失敗: ${failCount}曲)`);
+            u.showAlert("追加完了", `${successCount}曲の追加が完了しました。\n(失敗: ${failCount}曲)`);
             if (successCount > 0) {
-                this.scannedData = [];
+                this.scannedData =[];
                 document.getElementById('bulkResultArea').style.display = 'none';
                 document.getElementById('bulkPlaylistUrl').value = '';
             }

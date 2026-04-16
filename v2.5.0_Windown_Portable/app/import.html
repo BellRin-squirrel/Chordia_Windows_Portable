@@ -11,6 +11,33 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
     <script src="js/theme_head.js"></script>
+    <style>
+        /* 重複リスト表示用のスタイル */
+        .dup-list-container {
+            margin: 15px 0;
+            max-height: 200px;
+            overflow-y: auto;
+            background: var(--bg-color);
+            border-radius: 8px;
+            border: 1px solid rgba(128,128,128,0.2);
+            text-align: left;
+        }
+        .dup-item {
+            padding: 8px 12px;
+            border-bottom: 1px solid rgba(128,128,128,0.1);
+            font-size: 0.85rem;
+        }
+        .dup-item:last-child { border-bottom: none; }
+        .dup-item strong { color: var(--text-main); }
+        .dup-item span { color: var(--text-sub); margin-left: 8px; }
+
+        /* モーダル表示の強制上書き */
+        .modal-overlay.show {
+            display: flex !important;
+            opacity: 1 !important;
+            visibility: visible !important;
+        }
+    </style>
 </head>
 <body class="import-body-layout">
 
@@ -117,13 +144,22 @@
                 <div class="progress-bar-bg"><div id="progressBar" class="progress-bar-fill"></div></div>
                 <p id="progressText">処理中...</p>
             </div>
-            <div id="logArea" class="log-area" style="display: none;">
-                <h3>実行ログ</h3><ul id="logList"></ul>
-            </div>
         </main>
     </div>
 
-    <!-- 各種モーダル (中身は変更なし) -->
+    <!-- モーダル: 重複確認 -->
+    <div id="importDuplicateModal" class="modal-overlay">
+        <div class="modal-content" style="width: 500px;">
+            <h3 style="color: #f59e0b;">重複楽曲の確認</h3>
+            <p id="dupModalMsg" style="margin-bottom: 10px; font-size: 0.95rem; line-height: 1.5; text-align: left;"></p>
+            <div id="dupListArea" class="dup-list-container"></div>
+            <div id="dupActionButtons" class="modal-buttons" style="display: flex; flex-direction: column; gap: 10px;">
+                <!-- JSで動的にボタンを表示 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- 各種モーダル -->
     <div id="passwordModal" class="modal-overlay">
         <div class="modal-content" style="width: 400px;">
             <h3>パスワードが必要です</h3>
@@ -161,31 +197,9 @@
     <div id="artModal" class="modal-overlay">
         <div class="modal-content" style="width: 450px;">
             <h3>アートワーク編集</h3>
-            <div class="art-tabs-mini">
-                <button class="art-mini-tab-btn active" data-target="art-mini-local">ローカル</button>
-                <button class="art-mini-tab-btn" data-target="art-mini-video">動画URL</button>
-                <button class="art-mini-tab-btn" data-target="art-mini-image">画像URL</button>
-            </div>
-            <div id="art-mini-local" class="art-mini-tab-content active">
-                <button class="btn-secondary" style="width: 100%; margin-bottom: 12px;" onclick="document.getElementById('newArtInput').click()">PCから画像を選択</button>
-            </div>
-            <div id="art-mini-video" class="art-mini-tab-content">
-                <div class="input-row">
-                    <input type="text" id="miniVideoUrl" class="edit-input" placeholder="YouTubeなどの動画URLを入力...">
-                    <button id="btnFetchVideoArt" class="btn-primary" style="padding: 10px; margin-top: 8px; width: 100%;">サムネを取得</button>
-                </div>
-            </div>
-            <div id="art-mini-image" class="art-mini-tab-content">
-                <div class="input-row">
-                    <input type="text" id="miniImageUrl" class="edit-input" placeholder="画像の直接URLを入力...">
-                    <button id="btnFetchDirectArt" class="btn-primary" style="padding: 10px; margin-top: 8px; width: 100%;">画像を取得</button>
-                </div>
-            </div>
             <img id="currentArtPreview" src="icon/Chordia.png" style="width: 200px; height: 200px; object-fit: cover; border-radius: 12px; margin: 16px auto; display: block; box-shadow: var(--shadow-md);">
-            <div style="display: flex; gap: 12px;">
-                <button class="btn-secondary" id="btnRemoveArt" style="flex: 1; color: #ef4444;">画像を削除</button>
-                <input type="file" id="newArtInput" accept="image/*" hidden>
-            </div>
+            <button class="btn-secondary" style="width: 100%; margin-bottom: 12px;" onclick="document.getElementById('newArtInput').click()">PCから画像を選択</button>
+            <input type="file" id="newArtInput" accept="image/*" hidden>
             <div class="modal-buttons">
                 <button class="btn-secondary" id="btnCancelArt">キャンセル</button>
                 <button class="btn-primary" id="btnSaveArt">反映</button>

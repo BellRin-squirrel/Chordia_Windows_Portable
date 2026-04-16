@@ -18,6 +18,37 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
     <script src="js/theme_head.js"></script>
+    <style>
+        .duplicate-warning-box {
+            background: rgba(245, 158, 11, 0.1);
+            border: 1px solid #f59e0b;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 16px;
+            display: none; 
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+        .warning-text { color: #d97706; font-size: 0.85rem; font-weight: 700; }
+        .btn-play-existing {
+            background: #f59e0b; color: white; border: none; padding: 6px 14px;
+            border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 700; white-space: nowrap;
+        }
+        .existing-song-item {
+            display: flex; align-items: center; gap: 12px; padding: 12px;
+            background: rgba(128,128,128,0.05); border-radius: 8px; margin-bottom: 8px; text-align: left;
+        }
+        .existing-song-item img { width: 44px; height: 44px; border-radius: 4px; object-fit: cover; }
+        .existing-song-info { flex: 1; min-width: 0; }
+        .existing-song-info div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        .modal-overlay.show {
+            display: flex !important;
+            opacity: 1 !important;
+            visibility: visible !important;
+        }
+    </style>
 </head>
 <body>
 
@@ -37,17 +68,21 @@
             </div>
         </header>
 
-        <!-- タブ切り替え -->
         <div class="tab-menu">
             <button class="tab-btn active" data-target="tab-single">1曲追加</button>
             <button class="tab-btn" data-target="tab-bulk">一括追加 (YouTubeリスト)</button>
         </div>
 
-        <!-- TAB 1: 1曲追加 -->
         <div id="tab-single" class="tab-content active">
             <form id="addMusicForm" class="main-split-container">
                 <div class="pane pane-info">
                     <h2 class="pane-title">曲の情報</h2>
+                    
+                    <div id="duplicateWarning" class="duplicate-warning-box">
+                        <span class="warning-text">⚠️ 重複する楽曲がライブラリにあります</span>
+                        <button type="button" id="btnShowExisting" class="btn-play-existing">既存曲を再生</button>
+                    </div>
+
                     <div id="dynamicTagsContainer"></div>
                 </div>
 
@@ -266,6 +301,32 @@
         </div>
     </div>
 
+    <!-- モーダル: 既存曲プレイヤー -->
+    <div id="existingSongsModal" class="modal-overlay">
+        <div class="modal-content" style="width: 500px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                <h3 style="margin:0;">既に登録されている楽曲</h3>
+            </div>
+            <div id="existingSongsList" style="max-height: 400px; overflow-y: auto;"></div>
+            <div class="modal-buttons">
+                <button type="button" class="btn-secondary" id="btnCloseExisting" style="width: 100%;">閉じる</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- モーダル: 重複確認ポップアップ -->
+    <div id="confirmDuplicateModal" class="modal-overlay">
+        <div class="modal-content" style="width: 400px; text-align: center;">
+            <h3 style="color: #f59e0b;">重複の確認</h3>
+            <p style="margin: 20px 0; line-height: 1.6;">同じタイトル・アーティストの楽曲が既に登録されています。<br>このまま追加を続行しますか？</p>
+            <div class="modal-buttons" style="display: flex; gap: 12px;">
+                <button type="button" class="btn-secondary" id="btnCancelDupAdd" style="flex: 1;">キャンセル</button>
+                <button type="button" class="btn-primary" id="btnConfirmDupAdd" style="flex: 1;">続行する</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- モーダル: 一括追加用 歌詞編集 -->
     <div id="bulkLyricModal" class="modal-overlay">
         <div class="modal-content" style="width: 600px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
@@ -284,6 +345,7 @@
         </div>
     </div>
 
+    <!-- モーダル: 一括追加用 アートワーク編集 -->
     <div id="bulkArtModal" class="modal-overlay">
         <div class="modal-content" style="width: 450px;">
             <h3>アートワーク編集</h3>
@@ -302,6 +364,7 @@
         </div>
     </div>
 
+    <!-- モーダル: 一括追加用 削除確認 -->
     <div id="bulkDeleteModal" class="modal-overlay">
         <div class="modal-content" style="width: 350px;">
             <h3 style="color: #ef4444;">削除確認</h3>
@@ -314,6 +377,7 @@
         </div>
     </div>
 
+    <!-- モーダル: YouTubeプレビュー -->
     <div id="youtubeModal" class="modal-overlay">
         <div class="modal-content" style="width: 800px; padding: 16px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
@@ -344,16 +408,22 @@
 
     <div id="toast" class="toast"></div>
 
+    <!-- ★ 分割したJSファイルの読み込み -->
     <script type="text/javascript" src="/eel.js"></script>
     <script src="js/add-music/utils.js"></script>
     <script src="js/add-music/source.js"></script>
     <script src="js/add-music/artwork.js"></script>
     <script src="js/add-music/lyric.js"></script>
-    <!-- ★一括追加用JS分割 -->
+    
+    <script src="js/add-music/tags_autocomplete.js"></script>
+    <script src="js/add-music/duplicate_check.js"></script>
+    <script src="js/add-music/submit_process.js"></script>
+    
     <script src="js/add-music/bulk_core.js"></script>
     <script src="js/add-music/bulk_ui.js"></script>
     <script src="js/add-music/bulk_action.js"></script>
     <script src="js/add-music/main.js"></script>
+    
     <script src="js/theme.js"></script>
 </body>
 </html>

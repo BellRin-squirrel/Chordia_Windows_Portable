@@ -45,7 +45,7 @@ else:
     BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
 # アプリバージョン定義
-appVersion = "v2.5.0"
+appVersion = "v2.6.1"
 
 LIBRARY_DIR = os.path.join(BASE_DIR, "library")
 MUSIC_DIR = os.path.join(LIBRARY_DIR, "music")
@@ -210,6 +210,56 @@ def set_sync_window_state(is_open):
     AUTH_STATE["window_open"] = is_open
     if not is_open:
         AUTH_STATE["pending_request"] = None
+
+@eel.expose
+def check_import_duplicates(import_list):
+    """インポート予定のリストと現在のDBを照合し、タイトルとアーティストが一致する重複曲を返す"""
+    db = load_db()
+    # 検索高速化のため現在のDBをセット化 (小文字・トリミング済み)
+    existing_set = set()
+    for item in db:
+        t = str(item.get('title', '')).strip().lower()
+        a = str(item.get('artist', '')).strip().lower()
+        if t and a:
+            existing_set.add((t, a))
+
+    duplicates = []
+    for item in import_list:
+        it = str(item.get('title', '')).strip().lower()
+        ia = str(item.get('artist', '')).strip().lower()
+        if (it, ia) in existing_set:
+            duplicates.append({
+                'title': item.get('title'),
+                'artist': item.get('artist')
+            })
+    return duplicates
+
+@eel.expose
+def check_duplicate_songs(title, artist):
+    """タイトルとアーティスト名が完全に一致する楽曲を検索する"""
+    db = load_db()
+    matches = []
+    q_title = title.strip().lower()
+    q_artist = artist.strip().lower()
+
+    if not q_title or not q_artist:
+        return []
+
+    for item in db:
+        if item.get('title', '').strip().lower() == q_title and \
+           item.get('artist', '').strip().lower() == q_artist:
+            # プレビュー再生用にファイル名（ベースネーム）を抽出
+            m_path = item.get('musicFilename', '')
+            fname = os.path.basename(m_path)
+            
+            matches.append({
+                'title': item.get('title'),
+                'artist': item.get('artist'),
+                'album': item.get('album'),
+                'filename': fname,
+                'imageData': get_image_base64(item.get('imageFilename'))
+            })
+    return matches
 
 @eel.expose
 def clear_all_sessions():
@@ -794,6 +844,29 @@ def respond_to_request(approve):
         # ステータスを更新するだけにする（コードの表示判断はJS側に任せる）
         AUTH_STATE["pending_request"]["status"] = "approved" if approve else "rejected"
     return True
+
+@eel.expose
+def get_autocomplete_lists():
+    """楽曲追加画面のサジェスト用に、タイトル・アーティスト・アルバムの一覧を取得する"""
+    db = load_db()
+    titles = set()
+    artists = set()
+    albums = set()
+    for item in db:
+        # None が入っていてもエラーにならないように str() を挟む
+        t = str(item.get('title') or '').strip()
+        a = str(item.get('artist') or '').strip()
+        al = str(item.get('album') or '').strip()
+        
+        if t: titles.add(t)
+        if a: artists.add(a)
+        if al: albums.add(al)
+        
+    return {
+        'title': sorted(list(titles), key=lambda s: s.lower()),
+        'artist': sorted(list(artists), key=lambda s: s.lower()),
+        'album': sorted(list(albums), key=lambda s: s.lower())
+    }
 
 @eel.expose
 def get_auth_code_on_load():

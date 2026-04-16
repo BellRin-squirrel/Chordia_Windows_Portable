@@ -185,6 +185,22 @@ body.import-body-layout {
     background: rgba(128, 128, 128, 0.1);
 }
 
+/* ★追加: プライマリボタンのスタイル */
+.btn-primary {
+    background: var(--primary-color);
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-primary:hover:not(:disabled) {
+    background: var(--primary-color-dark);
+}
+
 /* --- ZIPインポート結果テーブル --- */
 .result-header {
     display: flex;

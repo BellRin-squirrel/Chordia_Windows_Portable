@@ -2,14 +2,15 @@
     const s = window.PlayerState;
 
     window.ModalSongSelect = {
-        libraryData: [],
+        libraryData:[],
         selectedFilenames: new Set(),
         currentPlaylistId: null,
         sortField: null,
         sortDesc: false,
         lastClickedIndex: null,
         _tempContextId: null,
-        activeTags: [],
+        activeTags:[],
+        advancedConditions: null, // ★高度な検索条件の保持用
 
         findTargetPlaylistId: function() {
             if (this._tempContextId) return this._tempContextId;
@@ -24,20 +25,68 @@
             return s.currentPlaylistId || null;
         },
 
-        // ★ 修正: 表示を 'table-row' に戻すことでレイアウト崩れを修正
+        // ★JS上でのスマート条件評価ロジック
+        evaluateSmartRules: function(song, ruleItem) {
+            if (!ruleItem) return true;
+            if (ruleItem.type === 'group') {
+                const matchType = ruleItem.match;
+                const results = ruleItem.items.map(child => this.evaluateSmartRules(song, child));
+                if (results.length === 0) return true;
+                return matchType === 'all' ? results.every(r => r) : results.some(r => r);
+            } else if (ruleItem.type === 'filter') {
+                const tag = ruleItem.tag;
+                const op = ruleItem.op;
+                const targetVal = ruleItem.val;
+                const songVal = String(song[tag] || '').toLowerCase();
+                
+                if (['track', 'year', 'disc', 'bpm'].includes(tag)) {
+                    const sNum = parseFloat(song[tag]) || 0;
+                    if (op === 'range') {
+                        const min = parseFloat(targetVal[0]) || 0;
+                        const max = parseFloat(targetVal[1]) || 0;
+                        return sNum >= min && sNum <= max;
+                    }
+                    const vNum = parseFloat(targetVal) || 0;
+                    if (op === 'equals') return sNum === vNum;
+                    if (op === 'not_equals') return sNum !== vNum;
+                    if (op === 'greater') return sNum > vNum;
+                    if (op === 'less') return sNum < vNum;
+                    return false;
+                }
+                
+                const targetStr = String(targetVal).toLowerCase();
+                if (op === 'contains') return songVal.includes(targetStr);
+                if (op === 'not_contains') return !songVal.includes(targetStr);
+                if (op === 'equals') return songVal === targetStr;
+                if (op === 'not_equals') return songVal !== targetStr;
+                if (op === 'startswith') return songVal.startsWith(targetStr);
+                if (op === 'endswith') return songVal.endsWith(targetStr);
+            }
+            return false;
+        },
+
         filterData: function(query) {
-            const q = query.toLowerCase().trim();
+            const q = query ? query.toLowerCase().trim() : "";
             const rows = document.querySelectorAll('#selectTableBody tr');
             
             rows.forEach((row, index) => {
                 const item = this.libraryData[index];
-                const match = !q || (
-                    (item.title && item.title.toLowerCase().includes(q)) ||
-                    (item.artist && item.artist.toLowerCase().includes(q)) ||
-                    (item.album && item.album.toLowerCase().includes(q))
-                );
-                // display: flex になっていた箇所を修正
-                row.style.display = match ? 'table-row' : 'none';
+                let matchText = true;
+                
+                if (q) {
+                    matchText = (
+                        (item.title && item.title.toLowerCase().includes(q)) ||
+                        (item.artist && item.artist.toLowerCase().includes(q)) ||
+                        (item.album && item.album.toLowerCase().includes(q))
+                    );
+                }
+                
+                let matchAdv = true;
+                if (this.advancedConditions) {
+                    matchAdv = this.evaluateSmartRules(item, this.advancedConditions);
+                }
+
+                row.style.display = (matchText && matchAdv) ? 'table-row' : 'none';
             });
             
             this.lastClickedIndex = null;
@@ -46,7 +95,6 @@
 
         sortData: function(field) {
             // 軽量化のため、現在はDOMの再構築を伴うソートは無効化しています。
-            // 必要であれば、ここから再レンダリング処理を呼ぶように拡張可能です。
         },
 
         save: async function() {
