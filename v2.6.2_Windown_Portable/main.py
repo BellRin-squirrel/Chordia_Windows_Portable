@@ -726,6 +726,16 @@ def auth_verify():
     
     return jsonify({"status": "error", "message": "Invalid code"}), 403
 
+# --- ポート番号の自動取得 ---
+def find_free_port():
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(('', 0)) # OSに空きポートを自動割り当てさせる
+        return s.getsockname()[1]
+
+# 起動時にこのプロセス専用のポートを即座に確定させる
+FLASK_PORT = find_free_port()
+
 @flask_app.route('/api/auth/logout', methods=['POST'])
 def auth_logout():
     """iPhone側から接続解除されたときにセッションを削除する"""
@@ -973,10 +983,13 @@ def force_disconnect_session(ip, device):
     return True
 
 def run_flask():
+    global FLASK_PORT
     try:
-        flask_app.run(host='0.0.0.0', port=5000, threaded=True)
+        # 他のプロセスと衝突しないよう、確定したポートで起動
+        # debug=False, use_reloader=False は複数プロセス時の安定性のために重要です
+        flask_app.run(host='0.0.0.0', port=FLASK_PORT, threaded=True, debug=False, use_reloader=False)
     except Exception as e:
-        print(f"Flask起動エラー: {e}")
+        print(f"Flask起動失敗: {e}")
 
 # --- Eel Functions ---
 
@@ -1002,9 +1015,10 @@ def get_connect_info():
             pass
         finally:
             s.close()
-        return {'ip': ip, 'port': 5000}
+        # このプロセス固有のポートを返す
+        return {'ip': ip, 'port': FLASK_PORT}
     except Exception:
-        return {'ip': '127.0.0.1', 'port': 5000}
+        return {'ip': '127.0.0.1', 'port': FLASK_PORT}
 
 def get_duration_str(path):
     try:

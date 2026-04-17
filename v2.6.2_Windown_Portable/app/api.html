@@ -17,9 +17,11 @@
 
         <div class="card-large">
             <div id="viewMain">
-                <h3>PCのIPアドレス</h3>
-                <div class="ip-box"><span id="displayIp">取得中...</span></div>
-                <p class="hint">iPhoneアプリでこのIPを入力するか、QRコードを表示して読み取ってください。</p>
+                <h3>このプロセスの接続先情報</h3>
+                <div class="ip-box">
+                    <span id="displayIp">取得中...</span><span class="port-separator">:</span><span id="displayPort">----</span>
+                </div>
+                <p class="hint">このプロセスと同期するには、iPhoneアプリで上記情報を入力するかQRコードを読み取ってください。</p>
                 
                 <div class="center-btn-area">
                     <button class="btn-primary" id="btnShowQr">QRコードを表示</button>
@@ -36,7 +38,7 @@
         </div>
 
         <div class="sessions-container">
-            <h2>接続中のデバイス</h2>
+            <h2>このプロセスの接続状況</h2>
             <ul id="sessionsList">
                 <li class="no-sessions">接続中のデバイスはありません。</li>
             </ul>
@@ -47,7 +49,6 @@
         <div class="modal-content">
             <h3 class="alert-title">接続要求がありました</h3>
             <div class="device-info-card">
-                <!-- ★ 修正点: デバイス情報を表示する場所を1つにまとめる -->
                 <p id="reqDeviceInfo">デバイス情報を待っています...</p>
             </div>
             <div id="approvalActions">

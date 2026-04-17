@@ -1,9 +1,10 @@
 .sync-body { justify-content: flex-start; padding-top: 50px; }
 .card-large { background: var(--card-bg); border-radius: 24px; padding: 40px; box-shadow: var(--shadow-md); text-align: center; }
-.ip-box { background: var(--bg-color); padding: 20px; border-radius: 16px; font-family: monospace; font-size: 2rem; font-weight: 800; color: var(--primary-color); margin: 20px 0; border: 1px solid rgba(128,128,128,0.1); }
+.ip-box { background: var(--bg-color); padding: 20px; border-radius: 16px; font-family: monospace; font-size: 2.2rem; font-weight: 800; color: var(--primary-color); margin: 20px 0; border: 1px solid rgba(128,128,128,0.1); display: flex; justify-content: center; align-items: center; }
+.port-separator { margin: 0 10px; opacity: 0.3; font-weight: 400; }
+#displayPort { font-size: 1.8rem; opacity: 0.8; }
 .hint { font-size: 0.95rem; color: var(--text-sub); margin-bottom: 25px; }
 
-/* 中央揃えの修正 */
 .center-btn-area { display: flex; justify-content: center; width: 100%; }
 
 button.btn-primary { background: var(--primary-color); color: white; border: none; padding: 12px 30px; border-radius: 12px; font-weight: bold; cursor: pointer; font-size: 1rem; }
@@ -13,19 +14,15 @@ button.btn-danger { background: white; color: var(--youtube-color); border: 1px 
 .qr-bg-white { background: white; padding: 25px; border-radius: 20px; display: inline-block; margin: 20px 0; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
 
 .modal-overlay { position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); display:flex; justify-content:center; align-items:center; z-index:1000; backdrop-filter: blur(5px); }
-.modal-content { background: var(--card-bg); padding: 40px; border-radius: 28px; width: 400px; text-align: center; box-shadow: 0 20px 50px rgba(0,0,0,0.4); }
-.device-info-card { background: var(--bg-color); padding: 20px; border-radius: 16px; text-align: left; margin: 20px 0; border: 1px solid rgba(128,128,128,0.1); }
-/* ★ 追加: デバイス情報カード内のテキストスタイル */
-.device-info-card p {
-    font-size: 1.1rem;
-    font-weight: 700;
-    color: var(--text-main);
-    text-align: center;
-}
+.modal-content { background: var(--card-bg); padding: 40px; border-radius: 28px; width: 420px; text-align: center; box-shadow: 0 20px 50px rgba(0,0,0,0.4); }
+.device-info-card { background: var(--bg-color); padding: 20px; border-radius: 16px; text-align: center; margin: 20px 0; border: 1px solid rgba(128,128,128,0.1); }
+.device-info-card strong { font-size: 1.2rem; color: var(--text-main); display: block; margin-bottom: 5px; }
+.device-info-card small { font-size: 0.9rem; color: var(--text-sub); }
+
 .btn-group { display: flex; gap: 15px; }
 .btn-group button { flex: 1; }
 
-.auth-code-large { font-size: 3rem; font-family: 'Courier New', monospace; font-weight: 800; letter-spacing: 10px; color: var(--primary-color); margin: 25px 0; }
+.auth-code-large { font-size: 3.5rem; font-family: 'Courier New', monospace; font-weight: 800; letter-spacing: 12px; color: var(--primary-color); margin: 25px 0; }
 .countdown-bar { font-size: 0.9rem; color: var(--text-sub); font-weight: bold; }
 
 .sessions-container { margin-top: 50px; width: 100%; }
@@ -34,9 +31,9 @@ button.btn-danger { background: white; color: var(--youtube-color); border: 1px 
 .session-item-device { font-weight: 800; font-size: 1.1rem; }
 .session-item-ip { font-size: 0.85rem; color: var(--text-sub); }
 .session-item-actions { display: flex; align-items: center; gap: 15px; }
-.session-item-time { font-family: monospace; color: var(--primary-color); font-weight: 900; font-size: 1.1rem; background: var(--bg-color); padding: 5px 12px; border-radius: 8px; }
 
 .btn-disconnect { background: #fee2e2; color: #ef4444; border: 1px solid #f87171; padding: 6px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 0.85rem; transition: background 0.2s; }
 .btn-disconnect:hover { background: #fecaca; }
 
-.toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: #059669; color: white; padding: 15px 30px; border-radius: 50px; opacity: 0; transition: opacity 0.4s, bottom 0.4s; z-index: 2000; font-weight: bold; }
+.toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: #059669; color: white; padding: 15px 30px; border-radius: 50px; opacity: 0; pointer-events: none; transition: all 0.4s; z-index: 2000; font-weight: bold; }
+.toast.show { opacity: 1; bottom: 50px; }
