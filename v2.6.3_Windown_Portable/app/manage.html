@@ -108,7 +108,7 @@
         </div>
     </div>
 
-    <!-- アルバムアート編集モーダル (★ インポート画面風に刷新) -->
+    <!-- アルバムアート編集モーダル -->
     <div id="artModal" class="modal-overlay">
         <div class="modal-content art-modal" style="width: 450px;">
             <button id="btnCloseArtModalX" class="btn-close-circle">
@@ -139,6 +139,9 @@
                     <button id="btnFetchDirectArt" class="btn-save" style="width: 100%;">画像を取得</button>
                 </div>
             </div>
+
+            <!-- ★エラー表示エリア -->
+            <p id="artErrorDisplay" class="art-error-msg" style="display: none;"></p>
 
             <div class="art-preview-area" style="margin-top: 20px;">
                 <img id="currentArtPreview" src="icon/Chordia.png" alt="Preview">

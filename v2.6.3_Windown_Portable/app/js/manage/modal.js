@@ -4,20 +4,20 @@
 
     window.ModalController = {
         activeTags: [],
-        textOps:[
-            {val: 'contains', label: 'を含む'},
-            {val: 'not_contains', label: 'を含まない'},
-            {val: 'equals', label: 'である'},
-            {val: 'not_equals', label: 'ではない'},
-            {val: 'startswith', label: 'で始まる'},
-            {val: 'endswith', label: 'で終わる'}
+        textOps: [
+            { val: 'contains', label: 'を含む' },
+            { val: 'not_contains', label: 'を含まない' },
+            { val: 'equals', label: 'である' },
+            { val: 'not_equals', label: 'ではない' },
+            { val: 'startswith', label: 'で始まる' },
+            { val: 'endswith', label: 'で終わる' }
         ],
-        numOps:[
-            {val: 'equals', label: 'である'},
-            {val: 'not_equals', label: 'ではない'},
-            {val: 'greater', label: 'より大きい'},
-            {val: 'less', label: 'より小さい'},
-            {val: 'range', label: 'の範囲内'}
+        numOps: [
+            { val: 'equals', label: 'である' },
+            { val: 'not_equals', label: 'ではない' },
+            { val: 'greater', label: 'より大きい' },
+            { val: 'less', label: 'より小さい' },
+            { val: 'range', label: 'の範囲内' }
         ],
 
         init: function() {
@@ -54,29 +54,15 @@
             // --- アートワーク編集 ミニタブ切り替え ---
             const artMiniTabs = document.querySelectorAll('.art-mini-tab-btn');
             artMiniTabs.forEach(btn => {
-                btn.onclick = async () => {
+                btn.onclick = () => {
                     const target = btn.dataset.target;
-                    
-                    // 動画タブの場合はツールチェックを実行
-                    if (target === 'art-mini-video') {
-                        try {
-                            const status = await eel.check_tools_status()();
-                            if (!status['yt-dlp'] || !status['ffmpeg']) {
-                                // ★修正: インポート画面と同様の通知メッセージを表示
-                                u.showToast("動画機能を利用するには拡張機能（yt-dlp, ffmpeg）をインストールしてください", true);
-                                return; // タブを切り替えずに終了
-                            }
-                        } catch (e) {
-                            console.error("Tool check error:", e);
-                            return;
-                        }
-                    }
-                    
-                    // タブの切り替え実行
                     artMiniTabs.forEach(t => t.classList.remove('active'));
                     document.querySelectorAll('.art-mini-tab-content').forEach(c => c.classList.remove('active'));
                     btn.classList.add('active');
-                    document.getElementById(target).classList.add('active');
+                    const targetContent = document.getElementById(target);
+                    if (targetContent) targetContent.classList.add('active');
+                    // タブ切り替え時にエラーを隠す
+                    this.showArtError(""); 
                 };
             });
 
@@ -87,8 +73,8 @@
                 const reader = new FileReader();
                 reader.onload = (ev) => {
                     s.newArtBase64 = ev.target.result;
-                    document.getElementById('currentArtPreview').src = ev.target.result;
-                    document.getElementById('artStatusText').textContent = "新しい画像 (反映前)";
+                    this.updatePreviewImage(ev.target.result, "新しい画像 (反映前)");
+                    this.showArtError("");
                 };
                 reader.readAsDataURL(file);
             };
@@ -96,29 +82,60 @@
             // --- アートワーク: 動画サムネイル取得 ---
             document.getElementById('btnFetchVideoArt').onclick = async () => {
                 const url = document.getElementById('miniVideoUrl').value.trim();
-                if (!url) return;
+                this.showArtError("");
+
+                if (!url) { 
+                    this.showArtError("URLを入力してください");
+                    return; 
+                }
+
                 const btn = document.getElementById('btnFetchVideoArt');
                 const orgText = btn.textContent;
-                btn.disabled = true; btn.textContent = "取得中...";
+                btn.disabled = true; 
+                btn.textContent = "確認中...";
+
                 try {
+                    const status = await eel.check_tools_status()();
+                    if (!status['yt-dlp'] || !status['ffmpeg']) {
+                        let missing = [];
+                        if(!status['yt-dlp']) missing.push("yt-dlp");
+                        if(!status['ffmpeg']) missing.push("ffmpeg");
+                        this.showArtError("拡張機能が不足しています: " + missing.join(", "));
+                        return;
+                    }
+
+                    btn.textContent = "取得中...";
                     const info = await eel.fetch_video_info(url)();
+
                     if (info.status === 'success' && info.thumbnail) {
+                        btn.textContent = "画像を変換中...";
                         const b64 = await eel.fetch_and_crop_thumbnail(info.thumbnail)();
+                        
                         if (b64) {
                             s.newArtBase64 = b64;
-                            document.getElementById('currentArtPreview').src = b64;
-                            document.getElementById('artStatusText').textContent = "動画サムネイル (反映前)";
+                            this.updatePreviewImage(b64, "動画サムネイル (反映前)");
                             u.showToast("サムネイルを取得しました");
+                        } else {
+                            this.showArtError("画像の加工に失敗しました。URLを確認してください。");
                         }
-                    } else { u.showToast(info.message || "取得失敗", true); }
-                } catch(e) { u.showToast("エラー", true); }
-                finally { btn.disabled = false; btn.textContent = orgText; }
+                    } else { 
+                        this.showArtError(info.message || "動画情報の取得に失敗しました。");
+                    }
+                } catch(e) { 
+                    this.showArtError("例外エラーが発生しました: " + e.message);
+                } finally { 
+                    btn.disabled = false; btn.textContent = orgText; 
+                }
             };
 
             // --- アートワーク: 画像URL取得 ---
             document.getElementById('btnFetchDirectArt').onclick = async () => {
                 const url = document.getElementById('miniImageUrl').value.trim();
-                if (!url) return;
+                this.showArtError("");
+                if (!url) {
+                    this.showArtError("URLを入力してください");
+                    return;
+                }
                 const btn = document.getElementById('btnFetchDirectArt');
                 const orgText = btn.textContent;
                 btn.disabled = true; btn.textContent = "取得中...";
@@ -126,29 +143,55 @@
                     const res = await eel.fetch_and_crop_image_url(url)();
                     if (res.status === 'success') {
                         s.newArtBase64 = res.data;
-                        document.getElementById('currentArtPreview').src = res.data;
-                        document.getElementById('artStatusText').textContent = "画像URL (反映前)";
+                        this.updatePreviewImage(res.data, "画像URL (反映前)");
                         u.showToast("画像を取得しました");
-                    } else { u.showToast(res.message, true); }
-                } catch(e) { u.showToast("エラー", true); }
+                    } else { 
+                        this.showArtError("取得失敗: " + res.message); 
+                    }
+                } catch(e) { 
+                    this.showArtError("通信エラーが発生しました"); 
+                }
                 finally { btn.disabled = false; btn.textContent = orgText; }
             };
 
             document.getElementById('btnExecRemoveArt').onclick = () => {
                 s.newArtBase64 = "REMOVE";
-                document.getElementById('currentArtPreview').src = s.DEFAULT_ICON;
-                document.getElementById('artStatusText').textContent = "削除予定 (反映前)";
+                this.updatePreviewImage(s.DEFAULT_ICON, "削除予定 (反映前)");
+                this.showArtError("");
             };
 
+            // --- アートワーク: 保存処理 ---
             document.getElementById('btnSaveArt').onclick = async () => {
+                const btn = document.getElementById('btnSaveArt');
+                const originalText = btn.textContent;
                 const item = s.libraryData[s.editingIndex];
-                const isRemove = (s.newArtBase64 === "REMOVE");
-                const b64 = isRemove ? null : s.newArtBase64;
-                const success = await eel.update_song_artwork_by_id(item.musicFilename, b64, isRemove)();
-                if (success) {
-                    u.showToast("アートワークを更新しました", false);
-                    document.getElementById('artModal').classList.remove('show');
-                    window.TableController.loadTableData();
+                
+                if (!item) return;
+                if (s.newArtBase64 === null) {
+                    u.showToast("画像を選択または取得してください", true);
+                    return;
+                }
+
+                btn.disabled = true;
+                btn.textContent = "適用中...";
+
+                try {
+                    const isRemove = (s.newArtBase64 === "REMOVE");
+                    const b64 = isRemove ? null : s.newArtBase64;
+                    const success = await eel.update_song_artwork_by_id(item.musicFilename, b64, isRemove)();
+                    
+                    if (success) {
+                        u.showToast("アートワークを更新しました", false);
+                        document.getElementById('artModal').classList.remove('show');
+                        await window.TableController.loadTableData();
+                    } else {
+                        this.showArtError("DB更新に失敗しました。パス設定を確認してください。");
+                    }
+                } catch (e) {
+                    this.showArtError("保存中に例外が発生しました。");
+                } finally {
+                    btn.disabled = false;
+                    btn.textContent = originalText;
                 }
             };
 
@@ -170,12 +213,34 @@
             document.getElementById('btnClearAdvSearch').onclick = () => this.clearAdvancedSearch();
             document.getElementById('btnApplyAdvSearch').onclick = () => this.applyAdvancedSearch();
 
-            // 背景クリックでカスタムドロップダウンを閉じる
             document.addEventListener('click', (e) => {
                 document.querySelectorAll('.custom-select-dropdown').forEach(d => {
                     if (!e.target.closest('.custom-select-wrapper')) d.classList.remove('show');
                 });
             });
+        },
+
+        showArtError: function(msg) {
+            const errEl = document.getElementById('artErrorDisplay');
+            if (!errEl) return;
+            if (msg) {
+                errEl.textContent = "⚠️ " + msg;
+                errEl.style.display = 'block';
+            } else {
+                errEl.style.display = 'none';
+                errEl.textContent = "";
+            }
+        },
+
+        updatePreviewImage: function(src, statusText) {
+            const imgEl = document.getElementById('currentArtPreview');
+            const statusEl = document.getElementById('artStatusText');
+            if (imgEl) {
+                imgEl.src = src;
+            }
+            if (statusEl) {
+                statusEl.textContent = statusText;
+            }
         },
 
         openLyricModal: function(index) {
@@ -188,18 +253,14 @@
 
         openArtModal: function(index) {
             s.editingIndex = index;
-            s.newArtBase64 = null;
+            s.newArtBase64 = null; 
+            this.showArtError(""); // 前のエラーを消す
             const item = s.libraryData[index];
-            document.getElementById('currentArtPreview').src = item.imageData || s.DEFAULT_ICON;
-            document.getElementById('artStatusText').textContent = "現在の画像";
-            
-            // 入力欄をクリア
+            this.updatePreviewImage(item.imageData || s.DEFAULT_ICON, "現在の画像");
             document.getElementById('miniVideoUrl').value = '';
             document.getElementById('miniImageUrl').value = '';
-            
-            // ローカルタブを初期選択
-            document.querySelector('.art-mini-tab-btn[data-target="art-mini-local"]').click();
-            
+            const defaultTab = document.querySelector('.art-mini-tab-btn[data-target="art-mini-local"]');
+            if (defaultTab) defaultTab.click();
             document.getElementById('artModal').classList.add('show');
         },
 
@@ -213,16 +274,13 @@
         searchLyrics: async function() {
             const item = s.libraryData[s.editingIndex];
             if (!item.title || !item.artist) { u.showToast("タイトルとアーティストが必要です", true); return; }
-            
             const btn = document.getElementById('btnAutoLyricManage');
             const originalText = btn.textContent;
             btn.textContent = "検索中..."; btn.disabled = true;
-
             try {
                 const res = await fetch(`https://lrclib.net/api/search?track_name=${encodeURIComponent(item.title)}&artist_name=${encodeURIComponent(item.artist)}`);
                 const data = await res.json();
                 const filtered = data.filter(d => d.plainLyrics);
-                
                 if (filtered.length === 0) {
                     u.showToast("見つかりませんでした", true);
                 } else {
@@ -490,13 +548,13 @@
             if (!rootElement) return;
             const parseGroup = (groupWrap) => {
                 const match = groupWrap.dataset.match || 'all';
-                const items =[];
+                const items = [];
                 Array.from(groupWrap.querySelector('.smart-group-body').children).forEach(child => {
                     if (child.classList.contains('smart-condition-row')) {
                         const tag = child.dataset.tag;
                         const op = child.dataset.op;
                         const inputs = child.querySelectorAll('.smart-input');
-                        const val = inputs.length > 1 ?[inputs[0].value, inputs[1].value] : inputs[0].value;
+                        const val = inputs.length > 1 ? [inputs[0].value, inputs[1].value] : inputs[0].value;
                         items.push({ type: 'filter', tag, op, val });
                     } else if (child.classList.contains('smart-group-wrapper')) items.push(parseGroup(child));
                 });

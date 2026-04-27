@@ -7,7 +7,10 @@
     background: rgba(0, 0, 0, 0.6);
     display: none;
     justify-content: center;
-    align-items: center;
+    align-items: flex-start; /* コンテンツが大きい時に上が切れるのを防ぐ */
+    overflow-y: auto;        /* モーダル全体をスクロール可能に */
+    padding: 40px 20px;      /* 画面上下左右の最低限の余白 */
+    box-sizing: border-box;
     z-index: 2000;
     backdrop-filter: blur(8px);
     transition: opacity 0.3s ease;
@@ -22,8 +25,9 @@
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
     position: relative;
     max-width: 90vw;
-    max-height: 95vh;
-    overflow-y: auto;
+    margin: auto;      /* 小さい時は縦横中央に自動配置させる */
+    flex-shrink: 0;    
+    overflow: visible; /* はみ出しを許可して内部スクロールを無効化 */
     color: var(--text-main);
     border: 1px solid rgba(128, 128, 128, 0.1);
 }
@@ -56,16 +60,8 @@
 .btn-close-circle:hover {
     background-color: #ef4444;
     color: white;
-    transform: rotate(90deg);
 }
 .btn-close-circle:active { opacity: 0; }
-
-.btn-close-x {
-    position: absolute; top: 20px; right: 20px;
-    background: none; border: none; cursor: pointer; color: var(--text-sub);
-    padding: 4px; transition: color 0.2s;
-}
-.btn-close-x:hover { color: var(--text-main); }
 
 /* --- アートワークミニタブ (インポート画面風) --- */
 .art-tabs-mini {
@@ -122,6 +118,18 @@
     margin-bottom: 12px;
 }
 #artStatusText { font-size: 0.85rem; color: var(--text-sub); font-weight: 700; }
+
+.art-error-msg {
+    background: rgba(239, 68, 68, 0.1);
+    color: #ef4444;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    margin-top: 10px;
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    text-align: left;
+}
 
 .art-actions {
     display: flex;
@@ -234,7 +242,15 @@
 }
 .btn-cancel:hover { background: rgba(128, 128, 128, 0.2); }
 
-/* --- 高度な検索 --- */
+
+/* =========================================
+   高度な検索 UI 用スタイル
+========================================= */
+
+#advSearchRootContainer {
+    text-align: left;
+}
+
 .smart-group-wrapper {
     background: rgba(128, 128, 128, 0.03);
     border-radius: 16px;
@@ -242,9 +258,175 @@
     border: 1px solid rgba(128, 128, 128, 0.1);
 }
 
+.smart-group-header, .smart-condition-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.smart-input-container {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 150px;
+}
+
+.smart-input {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid rgba(128, 128, 128, 0.3);
+    border-radius: 8px;
+    background-color: var(--bg-color);
+    color: var(--text-main);
+    outline: none;
+    font-size: 0.9rem;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.smart-input:focus {
+    border-color: var(--primary-color);
+}
+
+.smart-text {
+    color: var(--text-main);
+    font-size: 0.9rem;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.smart-btn-container {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    width: 110px;
+    justify-content: flex-end;
+}
+
+.smart-row-btn {
+    background: transparent;
+    border: 1px solid rgba(128, 128, 128, 0.3);
+    border-radius: 6px;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: var(--text-sub);
+    transition: all 0.2s;
+    padding: 0;
+}
+
+.smart-row-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+.smart-row-btn:hover:not(.disabled) {
+    background: rgba(128, 128, 128, 0.1);
+    color: var(--text-main);
+}
+
+.smart-row-btn.disabled, .smart-row-btn:disabled {
+    opacity: 0.15;
+    cursor: not-allowed;
+    background: transparent;
+}
+
+
+/* --- カスタムセレクター --- */
+.custom-select-wrapper {
+    position: relative;
+}
+
 .custom-select-trigger {
     background-color: var(--bg-color);
-    border: 1px solid rgba(128, 128, 128, 0.2);
+    border: 1px solid rgba(128, 128, 128, 0.3);
     border-radius: 8px;
     color: var(--text-main);
+    padding: 8px 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    outline: none;
+    min-height: 36px;
+    gap: 8px;
+    font-size: 0.9rem;
+    box-sizing: border-box;
+}
+
+.custom-select-trigger span {
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.custom-chevron {
+    width: 12px;
+    height: 12px;
+    color: var(--text-sub);
+}
+
+.custom-select-dropdown {
+    display: none;
+    position: absolute;
+    top: 0;   
+    left: 0;
+    min-width: 100%;
+    width: max-content;
+    background-color: color-mix(in srgb, var(--card-bg) 85%, transparent);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 0.5px solid rgba(128, 128, 128, 0.3);
+    border-radius: 10px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+    padding: 4px;
+    z-index: 9999; 
+}
+
+.custom-select-dropdown.show {
+    display: block;
+    animation: customPop 0.1s ease-out; 
+}
+
+@keyframes customPop {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
+}
+
+.custom-option {
+    display: flex;
+    align-items: center;
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    color: var(--text-main);
+    cursor: pointer;
+    gap: 8px;
+}
+
+.custom-option:hover {
+    background-color: var(--primary-color);
+    color: #ffffff !important;
+}
+
+.custom-option:hover .custom-check,
+.custom-option:hover span {
+    color: #ffffff !important;
+}
+
+.custom-check {
+    width: 12px;
+    height: 12px;
+    visibility: hidden;
+    color: var(--primary-color);
+}
+
+.custom-option.active .custom-check {
+    visibility: visible;
 }

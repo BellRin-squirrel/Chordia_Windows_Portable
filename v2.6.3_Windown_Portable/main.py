@@ -35,6 +35,7 @@ import pyzipper
 import tkinter.filedialog as filedialog
 import tkinter
 import ctypes
+import traceback
 
 # --- ディレクトリ設定 ---
 if getattr(sys, 'frozen', False):
@@ -45,7 +46,7 @@ else:
     BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
 # アプリバージョン定義
-appVersion = "v2.6.1"
+appVersion = "v2.6.3"
 
 LIBRARY_DIR = os.path.join(BASE_DIR, "library")
 MUSIC_DIR = os.path.join(LIBRARY_DIR, "music")
@@ -410,80 +411,37 @@ def parse_list_import(content, file_type):
 
 @eel.expose
 def execute_final_list_import(import_data_list):
-    """編集済みのリストを受け取り、実際にファイルをコピーしてDBに登録する"""
-    logs = []
+    """リストインポート時に画像をPNGへ強制変換"""
     current_db = load_db()
-    lyrics_data = {}
-    if os.path.exists(LYRIC_DB_PATH):
-        try:
-            with open(LYRIC_DB_PATH, 'r', encoding='utf-8') as f: lyrics_data = json.load(f)
-        except: pass
-
     total = len(import_data_list)
     success_count = 0
-
     for i, item in enumerate(import_data_list):
         try:
-            eel.js_import_progress(i + 1, total, f"楽曲を登録中... {i+ success_count} / {total}")()
-            eel.sleep(0.001)
-        except: pass
-
-        try:
-            title = item.get('title', 'Unknown')
             src_music = item.get('musicFilename')
-            src_image = item.get('imageFilename')
-            
-            if not src_music or not os.path.exists(src_music):
-                logs.append({'status': 'error', 'message': f'ファイルが見つかりません: {title}'})
-                continue
-            
+            if not src_music or not os.path.exists(src_music): continue
             file_id = generate_file_id()
-            ext_music = os.path.splitext(src_music)[1]
-            new_music_filename = f"{file_id}{ext_music}"
-            
+            new_music_filename = f"{file_id}{os.path.splitext(src_music)[1]}"
             dst_music_abs = os.path.join(MUSIC_DIR, new_music_filename)
             shutil.copy2(src_music, dst_music_abs)
 
             dst_image_abs = ""
-            # 手動設定されたBase64画像がある場合（プレビューで変更した場合）
-            if item.get('artwork_base64') and item['artwork_base64'].startswith('data:image'):
-                b64_data = item['artwork_base64'].split(',')[1]
-                ext = ".jpg" if "image/jpeg" in item['artwork_base64'] else ".png"
-                dst_image_abs = os.path.join(IMAGE_DIR, f"{file_id}{ext}")
-                with open(dst_image_abs, 'wb') as f:
-                    f.write(base64.b64decode(b64_data))
-            # 元のファイルパスがある場合
-            elif src_image and os.path.exists(src_image):
-                ext_image = os.path.splitext(src_image)[1]
-                dst_image_abs = os.path.join(IMAGE_DIR, f"{file_id}{ext_image}")
-                shutil.copy2(src_image, dst_image_abs)
+            if item.get('artwork_base64'):
+                dst_image_abs = os.path.join(IMAGE_DIR, f"{file_id}.png")
+                img_bytes = base64.b64decode(item['artwork_base64'].split(',')[1])
+                force_save_as_png(img_bytes, dst_image_abs)
+            elif item.get('imageFilename') and os.path.exists(item['imageFilename']):
+                dst_image_abs = os.path.join(IMAGE_DIR, f"{file_id}.png")
+                with open(item['imageFilename'], 'rb') as f:
+                    force_save_as_png(f.read(), dst_image_abs)
 
-            db_entry = {
-                "musicFilename": make_relative_path(dst_music_abs),
-                "imageFilename": make_relative_path(dst_image_abs),
-                "lyric": item.get('lyric', '')
-            }
-            for key in TAG_MAP.keys():
-                db_entry[key] = item.get(key, '')
-            
+            db_entry = {"musicFilename": make_relative_path(dst_music_abs), "imageFilename": make_relative_path(dst_image_abs), "lyric": item.get('lyric', '')}
+            for key in TAG_MAP.keys(): db_entry[key] = item.get(key, '')
             current_db.append(db_entry)
-            if db_entry["lyric"]:
-                lyrics_data[new_music_filename] = db_entry["lyric"]
-
             success_count += 1
-            logs.append({'status': 'success', 'message': f'登録: {title}'})
-        except Exception as e:
-            logs.append({'status': 'error', 'message': f'エラー ({title}): {str(e)}'})
-
+        except: pass
     save_db(current_db)
-    try:
-        with open(LYRIC_DB_PATH, 'w', encoding='utf-8') as f:
-            json.dump(lyrics_data, f, indent=4, ensure_ascii=False)
-    except: pass
-    
-    set_mp3_tag(notify_progress=True)
-    
-    return {'status': 'success', 'count': success_count, 'total': total, 'logs': logs}
+    set_mp3_tag()
+    return {'status': 'success', 'count': success_count}
 
 @eel.expose
 def record_playback(song_data):
@@ -974,6 +932,28 @@ def get_active_sessions():
         })
     return active
 
+def force_save_as_png(image_bytes, target_path):
+    """
+    バイナリデータを受け取り、Pillowで読み込んでPNG形式で保存する。
+    透過画像の場合は背景を白地に合成する。
+    """
+    try:
+        img = Image.open(io.BytesIO(image_bytes))
+        # 透過情報を処理（RGBAやパレットカラーの透過対応）
+        if img.mode in ('RGBA', 'LA') or (img.mode == 'P' and 'transparency' in img.info):
+            img = img.convert("RGBA")
+            bg = Image.new("RGB", img.size, (255, 255, 255))
+            bg.paste(img, mask=img.split()[3])
+            img = bg
+        else:
+            img = img.convert("RGB")
+        
+        img.save(target_path, format="PNG")
+        return True
+    except Exception as e:
+        print(f"PNG Conversion Error: {e}")
+        return False
+
 @eel.expose
 def force_disconnect_session(ip, device):
     """PC側から特定のデバイスのセッションを強制切断する"""
@@ -1382,12 +1362,11 @@ def get_library_data_with_meta(include_images=False):
 
 @eel.expose
 def save_music_data(data):
+    """新規楽曲保存時に画像をPNGへ強制変換"""
     try:
         f_id = ''.join(random.choices(string.ascii_lowercase + string.digits, k=32))
         m_b64 = data['music_data']
         ext = os.path.splitext(data['music_name'])[1] or ".mp3"
-        
-        # ファイル実体は絶対パスで保存
         m_path_abs = os.path.join(MUSIC_DIR, f"{f_id}{ext}")
         with open(m_path_abs, 'wb') as f:
             f.write(base64.b64decode(m_b64.split(',')[1] if ',' in m_b64 else m_b64))
@@ -1395,20 +1374,16 @@ def save_music_data(data):
         i_path_abs = ""
         if data.get('artwork_data'):
             i_b64 = data['artwork_data']
-            i_ext = ".jpg" if "image/jpeg" in i_b64 else ".png"
-            i_path_abs = os.path.join(IMAGE_DIR, f"{f_id}{i_ext}")
-            with open(i_path_abs, 'wb') as f:
-                f.write(base64.b64decode(i_b64.split(',')[1] if ',' in i_b64 else i_b64))
+            i_path_abs = os.path.join(IMAGE_DIR, f"{f_id}.png")
+            img_bytes = base64.b64decode(i_b64.split(',')[1] if ',' in i_b64 else i_b64)
+            force_save_as_png(img_bytes, i_path_abs)
         else:
             default_img = os.path.join(IMAGE_DIR, "default.png")
             if os.path.exists(default_img):
                 i_path_abs = os.path.abspath(default_img)
 
-        # 歌詞データの取得と改行コードの正規化
         raw_lyric = data.get('lyric', '')
         normalized_lyric = raw_lyric.replace('\r\n', '\n').replace('\r', '\n')
-
-        # DBには相対パスを保存
         db = load_db()
         entry = {
             "musicFilename": make_relative_path(m_path_abs),
@@ -1418,24 +1393,6 @@ def save_music_data(data):
         for k in TAG_MAP.keys(): entry[k] = data.get(k, '')
         db.append(entry)
         save_db(db)
-        
-        # lyric.json への保存処理
-        if normalized_lyric:
-            lyrics_data = {}
-            if os.path.exists(LYRIC_DB_PATH):
-                try:
-                    with open(LYRIC_DB_PATH, 'r', encoding='utf-8') as f:
-                        lyrics_data = json.load(f)
-                except Exception:
-                    pass
-            
-            # ファイル名をキーにして保存
-            new_filename = f"{f_id}{ext}"
-            lyrics_data[new_filename] = normalized_lyric
-            
-            with open(LYRIC_DB_PATH, 'w', encoding='utf-8') as f:
-                json.dump(lyrics_data, f, indent=4, ensure_ascii=False)
-        
         set_mp3_tag()
         return True
     except Exception as e:
@@ -1444,108 +1401,35 @@ def save_music_data(data):
     
 @eel.expose
 def download_and_save_music(data):
-    """
-    userfiles/bin/yt-dlp.exe と ffmpeg.exe を使用して動画URLから音声をダウンロードし、
-    メタデータやアートワークを付与してライブラリに保存する。
-    """
+    """動画ダウンロード時に画像をPNGへ強制変換"""
     is_ok, msg = check_required_binaries()
-    if not is_ok:
-        print(f"Error: {msg}")
-        return False
-
+    if not is_ok: return False
     try:
         video_url = data.get('video_url')
-        if not video_url:
-            return False
-
+        if not video_url: return False
         f_id = ''.join(random.choices(string.ascii_lowercase + string.digits, k=32))
         m_path_abs = os.path.join(MUSIC_DIR, f"{f_id}.mp3")
-
-        # --no-playlist フラグを追加してプレイリストURLを渡されても単一動画として処理する
-        command = [
-            yt_dlp_exe,
-            "--no-playlist",
-            "--extract-audio",
-            "--audio-format", "mp3",
-            "--audio-quality", "0", # 最高品質(VBR)
-            "--ffmpeg-location", os.path.dirname(ffmpeg_exe),
-            "-o", os.path.join(MUSIC_DIR, f"{f_id}.%(ext)s"),
-            video_url
-        ]
-
-        result = subprocess.run(
-            command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            encoding='utf-8',
-            creationflags=subprocess.CREATE_NO_WINDOW
-        )
-        
-        if result.returncode != 0:
-            print(f"Download Error: {result.stderr.strip()}")
-            return False
-
-        if not os.path.exists(m_path_abs):
-            print("Error: MP3 file was not created.")
-            return False
+        command = [yt_dlp_exe, "--no-playlist", "--extract-audio", "--audio-format", "mp3", "--audio-quality", "0", "--ffmpeg-location", os.path.dirname(ffmpeg_exe), "-o", os.path.join(MUSIC_DIR, f"{f_id}.%(ext)s"), video_url]
+        subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
 
         i_path_abs = ""
-        artwork_b64 = data.get('artwork_data')
-        
-        if artwork_b64:
-            if ',' in artwork_b64:
-                header, b64_body = artwork_b64.split(',', 1)
-            else:
-                header, b64_body = "image/png", artwork_b64
-                
-            i_ext = ".jpg" if "image/jpeg" in header else ".png"
-            i_path_abs = os.path.join(IMAGE_DIR, f"{f_id}{i_ext}")
-            
-            with open(i_path_abs, 'wb') as f:
-                f.write(base64.b64decode(b64_body))
+        if data.get('artwork_data'):
+            i_path_abs = os.path.join(IMAGE_DIR, f"{f_id}.png")
+            img_bytes = base64.b64decode(data['artwork_data'].split(',', 1)[1] if ',' in data['artwork_data'] else data['artwork_data'])
+            force_save_as_png(img_bytes, i_path_abs)
         else:
             default_img = os.path.join(IMAGE_DIR, "default.png")
-            if os.path.exists(default_img):
-                i_path_abs = os.path.abspath(default_img)
-
-        raw_lyric = data.get('lyric', '')
-        normalized_lyric = raw_lyric.replace('\r\n', '\n').replace('\r', '\n')
+            if os.path.exists(default_img): i_path_abs = os.path.abspath(default_img)
 
         db = load_db()
-        entry = {
-            "musicFilename": make_relative_path(m_path_abs),
-            "imageFilename": make_relative_path(i_path_abs),
-            "lyric": normalized_lyric
-        }
-        for k in TAG_MAP.keys():
-            entry[k] = data.get(k, '')
+        entry = {"musicFilename": make_relative_path(m_path_abs), "imageFilename": make_relative_path(i_path_abs), "lyric": data.get('lyric', '').replace('\r\n', '\n')}
+        for k in TAG_MAP.keys(): entry[k] = data.get(k, '')
         db.append(entry)
         save_db(db)
-        
-        if normalized_lyric:
-            lyrics_data = {}
-            if os.path.exists(LYRIC_DB_PATH):
-                try:
-                    with open(LYRIC_DB_PATH, 'r', encoding='utf-8') as f:
-                        lyrics_data = json.load(f)
-                except Exception:
-                    pass
-            new_filename = f"{f_id}.mp3"
-            lyrics_data[new_filename] = normalized_lyric
-            with open(LYRIC_DB_PATH, 'w', encoding='utf-8') as f:
-                json.dump(lyrics_data, f, indent=4, ensure_ascii=False)
-        
         set_mp3_tag()
-        
         return True
-
     except Exception as e:
-        print(f"Download and Save Error: {e}")
-        return False
-
-    except Exception as e:
-        print(f"Download and Save Error: {e}")
+        print(f"Download Error: {e}")
         return False
 
 @eel.expose
@@ -1728,38 +1612,59 @@ def download_original_thumbnail(url):
 @eel.expose
 def fetch_and_crop_thumbnail(url):
     """
-    URLからサムネイル画像をダウンロードし、中央を基準に正方形にクロップしてBase64で返す
+    URLからサムネイル画像をダウンロードし、中央を基準に正方形にクロップしてBase64(PNG)で返す
     """
     try:
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req) as response:
+        if not url:
+            print("[Python Error] URL is empty.")
+            return None
+        
+        # プロトコル補正
+        if url.startswith('//'):
+            url = 'https:' + url
+
+        print(f"[Python] Requesting Thumbnail URL: {url}")
+        
+        # リクエストの作成（タイムアウトとUser-Agentを強化）
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36'
+        }
+        req = urllib.request.Request(url, headers=headers)
+        
+        with urllib.request.urlopen(req, timeout=15) as response:
             img_data = response.read()
+            print(f"[Python] Data received. Size: {len(img_data)} bytes")
         
-        # バイトデータから画像を読み込む
+        # 画像として展開
         img = Image.open(io.BytesIO(img_data))
+        print(f"[Python] Image opened. Format: {img.format}, Size: {img.size}, Mode: {img.mode}")
         
-        # 中央を基準に正方形にクロップ
+        # クロップ処理
         width, height = img.size
         new_size = min(width, height)
         left = (width - new_size) / 2
         top = (height - new_size) / 2
         right = (width + new_size) / 2
         bottom = (height + new_size) / 2
-        
         img_cropped = img.crop((left, top, right, bottom))
         
-        # RGBモードに変換（PNGのアルファチャンネル等がある場合のJPEG保存エラー回避）
-        if img_cropped.mode != 'RGB':
-            img_cropped = img_cropped.convert('RGB')
+        # 透過背景を白にする処理（より互換性の高い方法に変更）
+        img_rgba = img_cropped.convert("RGBA")
+        bg = Image.new("RGBA", img_rgba.size, (255, 255, 255, 255))
+        bg.paste(img_rgba, (0, 0), img_rgba)
+        img_ready = bg.convert("RGB")
         
-        # Base64に変換
         buffered = io.BytesIO()
-        img_cropped.save(buffered, format="JPEG")
+        img_ready.save(buffered, format="PNG")
         img_str = base64.b64encode(buffered.getvalue()).decode('utf-8')
         
-        return f"data:image/jpeg;base64,{img_str}"
+        print("[Python] Thumbnail processing complete.")
+        return f"data:image/png;base64,{img_str}"
+        
     except Exception as e:
-        print(f"Thumbnail Crop Error: {e}")
+        print(f"[Python Error] fetch_and_crop_thumbnail: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return None
 
 @eel.expose
@@ -1836,43 +1741,43 @@ def remove_songs_from_playlist(pl_id, filenames):
 @eel.expose
 def fetch_and_crop_image_url(url):
     """
-    直接の画像URL（jpg, png, webpなど）から画像をダウンロードし、スクエアにクロップしてBase64で返す
+    直接の画像URLから画像を取得し、スクエアにクロップしてBase64(PNG)で返す。
     """
     try:
-        # 拡張子の簡易チェック（クエリパラメータ等を考慮してURLのファイル名部分をチェック）
-        from urllib.parse import urlparse
-        parsed = urlparse(url)
-        ext = os.path.splitext(parsed.path)[1].lower()
-        if ext not in ['.jpg', '.jpeg', '.png', '.webp']:
-            return {'status': 'error', 'message': 'jpg, png, webp形式の画像URLのみ対応しています。'}
-            
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req) as response:
+        if not url: return {'status': 'error', 'message': 'URLが空です'}
+        if url.startswith('//'):
+            url = 'https:' + url
+
+        print(f"[Python] Fetching image from URL: {url}")
+        
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36'}
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=10) as response:
             img_data = response.read()
             
         img = Image.open(io.BytesIO(img_data))
-        
-        # スクエアにクロップ
         width, height = img.size
         new_size = min(width, height)
         left = (width - new_size) / 2
         top = (height - new_size) / 2
         right = (width + new_size) / 2
         bottom = (height + new_size) / 2
-        
         img_cropped = img.crop((left, top, right, bottom))
-        if img_cropped.mode != 'RGB':
-            img_cropped = img_cropped.convert('RGB')
+        
+        img_cropped = img_cropped.convert("RGBA")
+        bg = Image.new("RGB", img_cropped.size, (255, 255, 255))
+        bg.paste(img_cropped, mask=img_cropped.split()[3])
+        img_cropped = bg
             
         buffered = io.BytesIO()
-        img_cropped.save(buffered, format="JPEG")
+        img_cropped.save(buffered, format="PNG")
         img_str = base64.b64encode(buffered.getvalue()).decode('utf-8')
         
-        return {'status': 'success', 'data': f"data:image/jpeg;base64,{img_str}"}
-    except urllib.error.URLError:
-        return {'status': 'error', 'message': '画像の取得に失敗しました。URLを確認してください。'}
+        print("[Python] Direct image fetched successfully.")
+        return {'status': 'success', 'data': f"data:image/png;base64,{img_str}"}
     except Exception as e:
-        return {'status': 'error', 'message': f'画像処理エラー: {str(e)}'}
+        print(f"[Python Error] Image URL Fetch: {e}")
+        return {'status': 'error', 'message': str(e)}
 
 @eel.expose
 def update_song_metadata(music_filename, updated_fields):
@@ -1912,45 +1817,57 @@ def update_song_by_id(music_filename, field, value):
 
 @eel.expose
 def update_song_artwork_by_id(music_filename, new_art_base64, remove):
+    """管理画面からの更新時に画像をPNGへ強制変換。パスの正規化を追加。"""
     try:
         data = load_db()
+        # 比較のためにOS依存のパス区切りを / に統一
+        target_path_norm = os.path.normpath(music_filename).replace('\\', '/')
+        
         target = None
-        # music_filename (ID) は相対パスの可能性があるが、DB内も相対パスなので文字列比較でOK
         for item in data:
-            if item.get('musicFilename') == music_filename:
+            if os.path.normpath(item.get('musicFilename', '')).replace('\\', '/') == target_path_norm:
                 target = item
                 break
-        if not target: return False
         
-        # 削除時は絶対パスにしてから削除
-        old = resolve_db_path(target.get('imageFilename'))
-        if old and os.path.exists(old):
-            try: os.remove(old)
-            except: pass
+        if not target:
+            print(f"[Python Error] 指定された楽曲がDBに見つかりません: {music_filename}")
+            return False
+        
+        # 旧画像の削除処理
+        old_img_rel = target.get('imageFilename')
+        if old_img_rel:
+            old_img_abs = resolve_db_path(old_img_rel)
+            if os.path.exists(old_img_abs) and "default.png" not in os.path.basename(old_img_abs).lower():
+                try:
+                    os.remove(old_img_abs)
+                except Exception as e:
+                    print(f"Old Image Delete Error: {e}")
             
         if remove:
             target['imageFilename'] = ""
         elif new_art_base64:
             file_id = generate_file_id()
-            image_ext = ".png"
+            new_path_abs = os.path.join(IMAGE_DIR, f"{file_id}.png")
+            
+            # Base64データのデコード
             if ',' in new_art_base64:
-                header, body = new_art_base64.split(',', 1)
-                if "image/jpeg" in header: image_ext = ".jpg"
-                new_art_base64 = body
+                img_bytes = base64.b64decode(new_art_base64.split(',')[1])
+            else:
+                img_bytes = base64.b64decode(new_art_base64)
             
-            # 実体は絶対パスで保存
-            new_image_filename = f"{file_id}{image_ext}"
-            new_path_abs = os.path.join(IMAGE_DIR, new_image_filename)
-            with open(new_path_abs, 'wb') as f:
-                f.write(base64.b64decode(new_art_base64))
-            
-            # ★修正: DBには相対パスを保存
-            target['imageFilename'] = make_relative_path(new_path_abs)
+            # PNGとして強制保存
+            if force_save_as_png(img_bytes, new_path_abs):
+                target['imageFilename'] = make_relative_path(new_path_abs)
+            else:
+                return False
             
         save_db(data)
+        # タグの更新（本来は対象の1曲だけで良いが、既存の関数を利用）
         set_mp3_tag()
         return True
-    except Exception:
+    except Exception as e:
+        print(f"Update Artwork Error: {e}")
+        traceback.print_exc()
         return False
 
 @eel.expose
@@ -2311,120 +2228,32 @@ def scan_mp3_zip_from_data(base64_zip, password=None):
 
 @eel.expose
 def execute_mp3_zip_import(import_data_list, temp_dir):
-    logs =[]
-    success_count = 0
-    total_count = len(import_data_list)
+    """ZIPインポート時に抽出した画像をPNGへ強制変換"""
     current_db = load_db()
-    lyrics_data = {}
-    if os.path.exists(LYRIC_DB_PATH):
+    success_count = 0
+    for item in import_data_list:
         try:
-            with open(LYRIC_DB_PATH, 'r', encoding='utf-8') as f: 
-                lyrics_data = json.load(f)
-        except: pass
-
-    try:
-        for i, item in enumerate(import_data_list):
-            # ★ 進捗通知とブロック防止
-            try:
-                eel.js_import_progress(i + 1, total_count, f"楽曲を登録中... {i+1} / {total_count}")()
-                if i % 2 == 0 or i == total_count - 1:
-                    eel.sleep(0.001)
-            except: pass
-
             src_path = item.get('temp_path')
-            title = item.get('title', 'Unknown')
-            
-            try:
-                if not os.path.exists(src_path):
-                    logs.append({'status': 'error', 'message': f'ファイル消失: {item.get("rel_path")}'})
-                    continue
+            if not src_path or not os.path.exists(src_path): continue
+            file_id = generate_file_id()
+            dst_music_abs = os.path.join(MUSIC_DIR, f"{file_id}.mp3")
+            shutil.copy2(src_path, dst_music_abs)
 
-                file_id = generate_file_id()
-                ext = os.path.splitext(src_path)[1]
-                new_music_filename = f"{file_id}{ext}"
-                
-                dst_music_abs = os.path.join(MUSIC_DIR, new_music_filename)
-                
-                # 1. アルバムアート抽出
-                img_path_abs = ""
-                try:
-                    src_audio = MP3(src_path, ID3=ID3)
-                    if src_audio.tags:
-                        apic_frames = src_audio.tags.getall('APIC')
-                        if apic_frames:
-                            apic = apic_frames[0]
-                            img_ext = ".png"
-                            if apic.mime in ['image/jpeg', 'image/jpg']: img_ext = ".jpg"
-                            new_image_filename = f"{file_id}{img_ext}"
-                            
-                            dst_image_abs = os.path.join(IMAGE_DIR, new_image_filename)
-                            with open(dst_image_abs, 'wb') as img_f:
-                                img_f.write(apic.data)
-                            img_path_abs = dst_image_abs
-                except Exception as e:
-                    print(f"Art Error: {e}")
+            dst_image_abs = ""
+            src_audio = MP3(src_path, ID3=ID3)
+            if src_audio.tags and src_audio.tags.getall('APIC'):
+                dst_image_abs = os.path.join(IMAGE_DIR, f"{file_id}.png")
+                force_save_as_png(src_audio.tags.getall('APIC')[0].data, dst_image_abs)
+            else:
+                dst_image_abs = os.path.join(IMAGE_DIR, "default.png")
 
-                if not img_path_abs:
-                    default_img = os.path.join(IMAGE_DIR, "default.png")
-                    if os.path.exists(default_img):
-                        img_path_abs = os.path.abspath(default_img)
-
-                # 2. コピー
-                shutil.copy2(src_path, dst_music_abs)
-                
-                # 3. タグ再構築
-                try:
-                    audio = MP3(dst_music_abs)
-                    audio.delete() 
-                    audio.save()
-                    audio = MP3(dst_music_abs)
-                    if audio.tags is None: audio.add_tags()
-                    
-                    for key, val in item.items():
-                        if key in TAG_MAP and val:
-                            audio.tags.add(TAG_MAP[key]['id3'](encoding=3, text=str(val)))
-                    
-                    lyric = item.get('lyric', '')
-                    if lyric:
-                        audio.tags.setall('USLT',[USLT(encoding=3, lang='eng', desc='', text=str(lyric))])
-                    
-                    if img_path_abs and os.path.exists(img_path_abs):
-                        mime_type = 'image/jpeg' if img_path_abs.lower().endswith('.jpg') else 'image/png'
-                        with open(img_path_abs, 'rb') as f:
-                            audio.tags.add(APIC(encoding=3, mime=mime_type, type=3, desc='Cover', data=f.read()))
-                    
-                    audio.save()
-                    
-                    db_entry = {
-                        "musicFilename": make_relative_path(dst_music_abs),
-                        "imageFilename": make_relative_path(img_path_abs),
-                        "lyric": lyric
-                    }
-                    for key in TAG_MAP.keys():
-                        db_entry[key] = item.get(key, '')
-                    current_db.append(db_entry)
-                    
-                    if lyric: lyrics_data[new_music_filename] = lyric
-                    success_count += 1
-                    
-                except Exception as e:
-                    logs.append({'status': 'error', 'message': f'タグエラー {title}: {e}'})
-                    if os.path.exists(dst_music_abs): os.remove(dst_music_abs)
-
-            except Exception as e:
-                logs.append({'status': 'error', 'message': f'処理エラー {title}: {e}'})
-
-        save_db(current_db)
-        try:
-            with open(LYRIC_DB_PATH, 'w', encoding='utf-8') as f: json.dump(lyrics_data, f, indent=4, ensure_ascii=False)
+            db_entry = {"musicFilename": make_relative_path(dst_music_abs), "imageFilename": make_relative_path(dst_image_abs), "lyric": item.get('lyric', '')}
+            for key in TAG_MAP.keys(): db_entry[key] = item.get(key, '')
+            current_db.append(db_entry)
+            success_count += 1
         except: pass
-        try: shutil.rmtree(temp_dir, ignore_errors=True)
-        except: pass
-
-        return {'status': 'success', 'count': success_count, 'total': total_count, 'logs': logs}
-
-    except Exception as e:
-        return {'status': 'fatal_error', 'message': str(e)}
+    save_db(current_db)
+    return {'status': 'success', 'count': success_count}
     
 @eel.expose
 def select_zip_file_dialog():
