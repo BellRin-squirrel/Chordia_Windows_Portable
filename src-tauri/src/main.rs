@@ -8,18 +8,21 @@ mod cmd_player;
 
 use std::sync::Mutex;
 use crate::models::AppState;
-use crate::utils::load_db;
+use crate::utils::{load_db, load_playlist_master};
 
 fn main() {
     let initial_db = load_db();
+    let initial_playlists = load_playlist_master();
 
     tauri::Builder::default()
         .manage(AppState {
             db: Mutex::new(initial_db),
+            playlists: Mutex::new(initial_playlists),
             playback_state: Mutex::new(serde_json::json!({})),
             is_mini_player_open: Mutex::new(false),
         })
         .invoke_handler(tauri::generate_handler![
+            // cmd_core
             crate::cmd_core::open_new_window,
             crate::cmd_core::get_app_settings,
             crate::cmd_core::save_app_settings,
@@ -47,6 +50,7 @@ fn main() {
             crate::cmd_core::execute_final_list_import,
             crate::cmd_core::scan_mp3_zip_from_data,
 
+            // cmd_db
             crate::cmd_db::get_available_tags,
             crate::cmd_db::get_library_data_with_meta,
             crate::cmd_db::get_album_list,
@@ -59,15 +63,22 @@ fn main() {
             crate::cmd_db::delete_song_by_id,
             crate::cmd_db::update_multiple_songs,
             crate::cmd_db::delete_multiple_songs,
-            crate::cmd_db::convert_smart_to_normal_and_remove_songs,
-            crate::cmd_db::remove_songs_from_playlist,
-            crate::cmd_db::duplicate_playlist_by_id,
-            crate::cmd_db::delete_playlist_by_id,
-            crate::cmd_db::update_playlist_by_id,
             crate::cmd_db::get_common_values_for_selected,
             crate::cmd_db::get_autocomplete_lists,
             crate::cmd_db::check_duplicate_songs,
+            crate::cmd_db::convert_smart_to_normal_and_remove_songs, // ★ 追加
+            crate::cmd_db::remove_songs_from_playlist,             // ★ 追加
 
+            // cmd_player
+            crate::cmd_player::get_all_playlists,
+            crate::cmd_player::get_playlist_details,
+            crate::cmd_player::create_playlist,
+            crate::cmd_player::add_songs_to_playlist,
+            crate::cmd_player::create_smart_playlist,
+            crate::cmd_player::update_smart_playlist,
+            crate::cmd_player::duplicate_playlist_by_id,
+            crate::cmd_player::delete_playlist_by_id,
+            crate::cmd_player::update_playlist_by_id,
             crate::cmd_player::record_playback,
             crate::cmd_player::get_playback_history,
             crate::cmd_player::update_playback_state_bridge,

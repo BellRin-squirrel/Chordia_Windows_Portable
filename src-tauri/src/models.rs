@@ -42,12 +42,24 @@ pub struct ImportItem {
     pub rel_path: Option<String>,
 }
 
+// ★ 警告を抑制するためのアトリビュートを追加
+#[allow(dead_code)]
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolUpdateInfo {
+    pub update_needed: bool,
+    pub local_version: String,
+    pub latest_version: String,
+}
+
 #[derive(Serialize)]
 pub struct TagInfo { pub key: String, pub label: String }
 
+#[allow(dead_code)] // オートコンプリート用構造体にも念のため追加
 #[derive(Serialize)]
 pub struct AutocompleteLists { pub title: Vec<String>, pub artist: Vec<String>, pub album: Vec<String> }
 
+#[allow(dead_code)] // 重複チェック用構造体にも念のため追加
 #[derive(Serialize)]
 pub struct DuplicateSong {
     pub title: String, pub artist: String, pub album: String, pub filename: String,
@@ -56,6 +68,7 @@ pub struct DuplicateSong {
 
 pub struct AppState {
     pub db: Mutex<Vec<serde_json::Map<String, Value>>>,
+    pub playlists: Mutex<Vec<Value>>,
     pub playback_state: Mutex<Value>,
     pub is_mini_player_open: Mutex<bool>,
 }
