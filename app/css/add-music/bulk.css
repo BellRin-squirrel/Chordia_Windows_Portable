@@ -1,0 +1,82 @@
+@charset "UTF-8";
+
+.table-container {
+    max-height: 50vh;
+    overflow-y: auto;
+    border: 1px solid rgba(128, 128, 128, 0.2);
+    border-radius: 12px;
+    background: var(--bg-color);
+}
+
+.mp3-table {
+    width: 100%;
+    border-collapse: separate; 
+    border-spacing: 0;
+    font-size: 0.9rem;
+}
+
+.mp3-table th {
+    background: var(--bg-color);
+    position: sticky;
+    top: 0;
+    z-index: 20; 
+    padding: 12px 16px;
+    text-align: left;
+    color: var(--text-sub);
+    font-weight: 700;
+    border-bottom: 2px solid rgba(128, 128, 128, 0.2);
+    white-space: nowrap;
+}
+
+.mp3-table th:last-child {
+    position: sticky;
+    right: 0;
+    z-index: 30; 
+    box-shadow: -4px 0 10px rgba(0,0,0,0.05);
+}
+
+.mp3-table td {
+    padding: 12px 16px;
+    border-bottom: 1px solid rgba(128, 128, 128, 0.1);
+    background: var(--card-bg);
+    vertical-align: middle;
+    color: var(--text-main);
+    white-space: nowrap;
+}
+
+.mp3-table .col-art-thumb { width: 60px; text-align: center; }
+.mp3-table .col-art-thumb img { width: 40px; height: 40px; object-fit: cover; border-radius: 4px; border: 1px solid rgba(128,128,128,0.2); }
+
+.mp3-table td input[type="text"] {
+    min-width: 180px; 
+    padding: 8px 12px;
+    border: 1px solid rgba(128, 128, 128, 0.3);
+    border-radius: 6px;
+    background: var(--bg-color);
+    color: var(--text-main);
+    outline: none;
+}
+.mp3-table td input[type="text"]:focus { border-color: var(--primary-color); }
+
+.mp3-table .col-action {
+    position: sticky;
+    right: 0;
+    z-index: 10;
+    background: var(--card-bg);
+    box-shadow: -4px 0 10px rgba(0,0,0,0.05);
+    text-align: center;
+    min-width: 140px;
+}
+
+.btn-icon-action { background: none; border: none; padding: 8px; color: var(--text-sub); cursor: pointer; border-radius: 8px; transition: all 0.2s; display: inline-flex; align-items: center; justify-content: center; }
+.btn-icon-action:hover { color: var(--primary-color); background: rgba(var(--primary-color-rgb, 79, 70, 229), 0.1); }
+
+.btn-del-row { background: rgba(239, 68, 68, 0.1); color: #ef4444; border: none; padding: 8px 14px; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 0.8rem; transition: all 0.2s; }
+.btn-del-row:hover { background: #ef4444; color: #fff; }
+
+.yt-link {
+    color: var(--primary-color);
+    text-decoration: underline;
+    cursor: pointer;
+    font-weight: 600;
+}
