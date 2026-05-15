@@ -1,90 +1,83 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod models;
+mod types;
 mod utils;
-mod cmd_core;
-mod cmd_db;
-mod cmd_player;
+mod commands;
 
 use std::sync::Mutex;
-use crate::models::AppState;
-use crate::utils::{load_db, load_playlist_master};
+use tauri::Manager;
+use utils::{load_db, load_playlists_master};
+
+pub struct AppState {
+    pub db: Mutex<Vec<serde_json::Map<String, serde_json::Value>>>,
+    pub playlists: Mutex<Vec<serde_json::Value>>,
+}
 
 fn main() {
     let initial_db = load_db();
-    let initial_playlists = load_playlist_master();
+    let initial_playlists = load_playlists_master();
 
     tauri::Builder::default()
         .manage(AppState {
             db: Mutex::new(initial_db),
             playlists: Mutex::new(initial_playlists),
-            playback_state: Mutex::new(serde_json::json!({})),
-            is_mini_player_open: Mutex::new(false),
+        })
+        .setup(|app| {
+            app.get_webview_window("main").unwrap();
+            Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            // cmd_core
-            crate::cmd_core::open_new_window,
-            crate::cmd_core::get_app_settings,
-            crate::cmd_core::save_app_settings,
-            crate::cmd_core::get_custom_themes,
-            crate::cmd_core::save_custom_theme,
-            crate::cmd_core::delete_custom_theme,
-            crate::cmd_core::get_default_art_url,
-            crate::cmd_core::update_default_artwork,
-            crate::cmd_core::reset_default_artwork,
-            crate::cmd_core::resolve_path,
-            crate::cmd_core::open_in_explorer,
-            crate::cmd_core::check_tools_status,
-            crate::cmd_core::fetch_video_info,
-            crate::cmd_core::fetch_youtube_playlist,
-            crate::cmd_core::fetch_and_crop_thumbnail,
-            crate::cmd_core::fetch_and_crop_image_url,
-            crate::cmd_core::extract_artwork_from_local_file,
-            crate::cmd_core::download_original_thumbnail,
-            crate::cmd_core::download_and_save_music,
-            crate::cmd_core::get_default_export_path,
-            crate::cmd_core::ask_save_path,
-            crate::cmd_core::execute_export,
-            crate::cmd_core::parse_list_import,
-            crate::cmd_core::check_import_duplicates,
-            crate::cmd_core::execute_final_list_import,
-            crate::cmd_core::scan_mp3_zip_from_data,
-
-            // cmd_db
-            crate::cmd_db::get_available_tags,
-            crate::cmd_db::get_library_data_with_meta,
-            crate::cmd_db::get_album_list,
-            crate::cmd_db::get_artist_list,
-            crate::cmd_db::get_virtual_playlist_details,
-            crate::cmd_db::get_library_count,
-            crate::cmd_db::get_library_chunk,
-            crate::cmd_db::update_song_by_id,
-            crate::cmd_db::update_song_artwork_by_id,
-            crate::cmd_db::delete_song_by_id,
-            crate::cmd_db::update_multiple_songs,
-            crate::cmd_db::delete_multiple_songs,
-            crate::cmd_db::get_common_values_for_selected,
-            crate::cmd_db::get_autocomplete_lists,
-            crate::cmd_db::check_duplicate_songs,
-            crate::cmd_db::convert_smart_to_normal_and_remove_songs, // ★ 追加
-            crate::cmd_db::remove_songs_from_playlist,             // ★ 追加
-
-            // cmd_player
-            crate::cmd_player::get_all_playlists,
-            crate::cmd_player::get_playlist_details,
-            crate::cmd_player::create_playlist,
-            crate::cmd_player::add_songs_to_playlist,
-            crate::cmd_player::create_smart_playlist,
-            crate::cmd_player::update_smart_playlist,
-            crate::cmd_player::duplicate_playlist_by_id,
-            crate::cmd_player::delete_playlist_by_id,
-            crate::cmd_player::update_playlist_by_id,
-            crate::cmd_player::record_playback,
-            crate::cmd_player::get_playback_history,
-            crate::cmd_player::update_playback_state_bridge,
-            crate::cmd_player::get_playback_state_bridge,
-            crate::cmd_player::set_mini_player_open,
-            crate::cmd_player::control_from_mini,
+            // --- 全般 ---
+            commands::open_new_window,
+            commands::get_app_settings,
+            commands::save_app_settings,
+            commands::get_custom_themes,
+            commands::save_custom_theme,
+            commands::delete_custom_theme,
+            
+            // --- 追加・アートワーク ---
+            commands::get_default_art_url,
+            commands::update_default_artwork,
+            commands::reset_default_artwork,
+            commands::get_available_tags,
+            commands::get_autocomplete_lists,
+            commands::check_duplicate_songs,
+            commands::save_music_data, // ★追加
+            commands::download_and_save_music,
+            commands::check_tools_status,
+            commands::fetch_video_info,
+            commands::fetch_youtube_playlist,
+            commands::fetch_and_crop_thumbnail,
+            commands::fetch_and_crop_image_url,
+            commands::extract_artwork_from_local_file,
+            commands::download_original_thumbnail,
+            commands::search_lyrics_online,
+            
+            // --- プレイリスト関連 ---
+            commands::get_playlist_summaries,
+            commands::get_playlist_details,
+            commands::get_album_list,
+            commands::get_artist_list,
+            commands::get_virtual_playlist_details,
+            commands::create_playlist,
+            commands::update_playlist_by_id,
+            commands::delete_playlist_by_id,
+            commands::duplicate_playlist_by_id,
+            commands::add_songs_to_playlist,
+            commands::remove_songs_from_playlist,
+            commands::create_smart_playlist,
+            commands::update_smart_playlist,
+            commands::convert_smart_to_normal_and_remove_songs,
+            
+            // --- 管理画面系 ---
+            commands::get_library_count,
+            commands::get_library_chunk,
+            commands::update_song_by_id,
+            commands::update_song_artwork_by_id,
+            commands::delete_song_by_id,
+            commands::get_common_values_for_selected,
+            commands::update_multiple_songs,
+            commands::delete_multiple_songs
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

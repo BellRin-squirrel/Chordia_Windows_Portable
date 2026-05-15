@@ -1,8 +1,6 @@
 (function() {
     const s = window.PlayerState;
     const u = window.PlayerUtils;
-    const invoke = window.__TAURI__.core ? window.__TAURI__.core.invoke : window.__TAURI__.tauri.invoke;
-    const convertFileSrc = window.__TAURI__.core ? window.__TAURI__.core.convertFileSrc : window.__TAURI__.tauri.convertFileSrc;
 
     window.PlayerController = {
         lastMiniPushTime: 0, 
@@ -17,6 +15,7 @@
                 const initialVolume = (savedVolume !== null) ? parseFloat(savedVolume) : 100;
                 this.volumeBar.value = initialVolume;
                 this.setVolume(initialVolume);
+
                 this.volumeBar.oninput = (e) => {
                     const val = parseFloat(e.target.value);
                     this.setVolume(val);
@@ -36,9 +35,12 @@
             const btnStop = document.getElementById('hdrBtnStop');
             if (btnStop) btnStop.addEventListener('click', () => {
                 this.stopPlayback();
-                document.getElementById('headerPlayerInfo').style.display = 'none';
-                document.getElementById('headerControls').style.display = 'none';
-                document.getElementById('headerLogo').style.display = 'flex';
+                const info = document.getElementById('headerPlayerInfo');
+                const ctrl = document.getElementById('headerControls');
+                const logo = document.getElementById('headerLogo');
+                if (info) info.style.display = 'none';
+                if (ctrl) ctrl.style.display = 'none';
+                if (logo) logo.style.display = 'flex';
             });
 
             if (this.audio) {
@@ -80,9 +82,25 @@
                 });
                 this.updateSeekColor(0);
             }
+
+            document.addEventListener('keydown', (e) => {
+                if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return;
+                if (e.code === 'Space') {
+                    e.preventDefault();
+                    if (e.shiftKey) {
+                        const info = document.getElementById('headerPlayerInfo');
+                        if (info && info.style.display !== 'none') {
+                            const btn = document.getElementById('hdrBtnStop');
+                            if (btn) btn.click();
+                        }
+                    } else if (s.queue.length > 0) {
+                        this.togglePlayPause();
+                    }
+                }
+            });
         },
 
-        pushStateToMini: async function(force = false) {
+        pushStateToMini: function(force = false) {
             if (!this.audio) return;
             const state = {
                 song: s.queue[s.currentIndex] || null,
@@ -92,22 +110,30 @@
                 queue: s.queue.slice(s.currentIndex + 1, s.currentIndex + 52)
             };
             
-            // ★ invoke で状態を Rust 経由でミニプレイヤーに同期
-            try {
-                await invoke("update_playback_state_bridge", { stateData: state });
-            } catch(e) {}
+            if (window.HeaderController && window.HeaderController.miniPlayerWindow) {
+                const miniWin = window.HeaderController.miniPlayerWindow;
+                if (!miniWin.closed && miniWin.MiniPlayer) {
+                    try {
+                        miniWin.MiniPlayer.render(state);
+                    } catch (e) {}
+                }
+            }
         },
 
         setVolume: function(val) {
             if (this.audio) {
-                this.audio.volume = val / 100;
-                if (this.volumeBar) this.volumeBar.style.background = `linear-gradient(to right, var(--primary-color) ${val}%, rgba(128,128,128,0.2) ${val}%)`;
+                const normalized = val / 100;
+                this.audio.volume = normalized;
+                if (this.volumeBar) {
+                    this.volumeBar.style.background = `linear-gradient(to right, var(--primary-color) ${val}%, rgba(128,128,128,0.2) ${val}%)`;
+                }
             }
         },
 
         startPlaybackSession: function(mode, startIndex = 0) {
             const isVirtual = s.currentPlaylistType === 'virtual';
             const targetPl = isVirtual ? s.currentVirtualPlaylist : s.playlists[s.currentPlaylistIndex];
+
             if (!targetPl || !targetPl.songs) return;
 
             document.getElementById('headerLogo').style.display = 'none';
@@ -118,49 +144,61 @@
             s.originalList = [...sortedList];
 
             if (mode === 'shuffle') {
-                s.isShuffle = true; s.loopMode = 'off';
-                s.queue = u.shuffleArray([...s.originalList]); s.currentIndex = 0;
+                s.isShuffle = true;
+                s.loopMode = 'off';
+                s.queue = u.shuffleArray([...s.originalList]);
+                s.currentIndex = 0;
             } else {
-                s.isShuffle = false; s.loopMode = 'off';
-                s.queue = [...s.originalList]; s.currentIndex = startIndex;
+                s.isShuffle = false;
+                s.loopMode = 'off';
+                s.queue = [...s.originalList];
+                s.currentIndex = startIndex;
             }
-            if (window.HeaderController) window.HeaderController.updateToggleButtons();
+            
+            if (window.HeaderController) {
+                window.HeaderController.updateToggleButtons();
+            }
+            
             this.playCurrentIndex();
         },
 
-        playCurrentIndex: async function() {
+        playCurrentIndex: function() {
             if (s.queue.length === 0 || s.currentIndex < 0) return;
             const song = s.queue[s.currentIndex];
-            if (!song || !song.musicFilename) return;
+            
+            // ★ 修正: Rust側で付与されたアセットURLを使用して直接再生する
+            if (!song || !song.streamUrl) {
+                u.showToast("再生可能なファイルが見つかりません", true);
+                return;
+            }
 
             this.audio.pause();
-            
-            // ★ TauriのAssetプロトコルでローカルファイルを再生
-            try {
-                const absPath = await invoke("resolve_path", { relPath: song.musicFilename });
-                this.audio.src = convertFileSrc(absPath);
-                this.audio.load();
+            this.audio.src = song.streamUrl;
+            this.audio.load();
 
-                await this.audio.play();
-                s.isPlaying = true;
-                if (window.HeaderController) window.HeaderController.updatePlayIcons(true);
-                this.afterPlayStarted(song);
-            } catch (e) {
-                console.error("Playback failed:", e);
-                s.isPlaying = false;
-                if (window.HeaderController) window.HeaderController.updatePlayIcons(false);
+            const playPromise = this.audio.play();
+            if (playPromise !== undefined) {
+                playPromise.then(() => {
+                    s.isPlaying = true;
+                    if (window.HeaderController) window.HeaderController.updatePlayIcons(true);
+                    this.afterPlayStarted(song);
+                }).catch(e => {
+                    console.error("Playback failed:", e);
+                    s.isPlaying = false;
+                    if (window.HeaderController) window.HeaderController.updatePlayIcons(false);
+                    u.showToast("再生に失敗しました", true);
+                });
             }
         },
 
-        afterPlayStarted: async function(song) {
+        afterPlayStarted: function(song) {
             if (window.HeaderController) window.HeaderController.updateHeaderUI(song);
             if (window.MainViewController) window.MainViewController.renderMainView(); 
             
-            // ★ invoke で再生回数・履歴を記録
-            try {
-                await invoke("record_playback", { songData: song });
-            } catch(e) {}
-            this.pushStateToMini(true);
+            setTimeout(() => {
+                // TODO: 再生履歴記録用APIの呼び出し（後で実装）
+                this.pushStateToMini(true);
+            }, 10);
         },
 
         togglePlayPause: function() {
@@ -172,7 +210,8 @@
                     this.pushStateToMini(true);
                 });
             } else {
-                this.audio.pause(); s.isPlaying = false;
+                this.audio.pause();
+                s.isPlaying = false;
                 if (window.HeaderController) window.HeaderController.updatePlayIcons(false);
                 this.pushStateToMini(true);
             }
@@ -181,7 +220,9 @@
 
         stopPlayback: function() {
             if (!this.audio) return;
-            this.audio.pause(); this.audio.src = ""; this.audio.currentTime = 0;
+            this.audio.pause();
+            this.audio.src = ""; 
+            this.audio.currentTime = 0;
             s.isPlaying = false;
             if (window.HeaderController) window.HeaderController.updatePlayIcons(false);
             if (window.MainViewController) window.MainViewController.renderMainView();
@@ -190,24 +231,39 @@
 
         nextSong: function() {
             if (s.loopMode === 'one' && this.audio) {
-                this.audio.currentTime = 0; this.audio.play(); return;
+                this.audio.currentTime = 0;
+                this.audio.play();
+                return;
             }
             if (s.currentIndex < s.queue.length - 1) {
-                s.currentIndex++; this.playCurrentIndex();
+                s.currentIndex++;
+                this.playCurrentIndex();
             } else {
                 if (s.loopMode === 'all') {
                     if (s.isShuffle) s.queue = u.shuffleArray([...s.originalList]);
-                    s.currentIndex = 0; this.playCurrentIndex();
-                } else { this.stopPlayback(); }
+                    s.currentIndex = 0;
+                    this.playCurrentIndex();
+                } else {
+                    this.stopPlayback();
+                }
             }
         },
 
         prevSong: function() {
-            if (this.audio && this.audio.currentTime > 3) { this.audio.currentTime = 0; return; }
-            if (s.currentIndex > 0) { s.currentIndex--; this.playCurrentIndex(); } 
-            else {
-                if (s.loopMode === 'all') { s.currentIndex = s.queue.length - 1; this.playCurrentIndex(); } 
-                else if (this.audio) { this.audio.currentTime = 0; }
+            if (this.audio && this.audio.currentTime > 3) {
+                this.audio.currentTime = 0;
+                return;
+            }
+            if (s.currentIndex > 0) {
+                s.currentIndex--;
+                this.playCurrentIndex();
+            } else {
+                if (s.loopMode === 'all') {
+                    s.currentIndex = s.queue.length - 1;
+                    this.playCurrentIndex();
+                } else if (this.audio) {
+                    this.audio.currentTime = 0;
+                }
             }
         },
 

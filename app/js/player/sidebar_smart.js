@@ -21,8 +21,9 @@
 
         openSmartPlaylistModal: async function(existingPl = null) {
             try {
-                const settings = await eel.get_app_settings()();
-                const allTags = await eel.get_available_tags()();
+                const invoke = window.__TAURI__.core ? window.__TAURI__.core.invoke : window.__TAURI__.tauri.invoke;
+                const settings = await invoke("get_app_settings");
+                const allTags = await invoke("get_available_tags");
                 const activeTags = settings.active_tags; 
                 this.smartTags = allTags.filter(t => activeTags.includes(t.key));
                 this.smartTags.push({key: 'lyric', label: '歌詞'});
@@ -195,6 +196,7 @@
         },
 
         finishCreateSmart: async function() {
+            const invoke = window.__TAURI__.core ? window.__TAURI__.core.invoke : window.__TAURI__.tauri.invoke;
             const nameInput = document.getElementById('smartPlaylistName');
             let name = nameInput.value.trim();
             if (!this.editingSmartId && !name) {
@@ -210,7 +212,7 @@
             if (!rootElement) return;
             const parseGroup = (groupWrap) => {
                 const match = groupWrap.querySelector('.smart-group-match').value;
-                const items =[];
+                const items = [];
                 Array.from(groupWrap.querySelector('.smart-group-body').children).forEach(child => {
                     if (child.classList.contains('smart-condition-row')) {
                         const tag = child.querySelector('.smart-filter-tag').value;
@@ -224,23 +226,23 @@
             };
             const rules = parseGroup(rootElement);
             document.getElementById('smartPlaylistModal').classList.remove('show');
-            window.SidebarController.showSaving();
             try {
                 let resultPl;
                 if (this.editingSmartId) {
-                    resultPl = await eel.update_smart_playlist(this.editingSmartId, name, rules)();
+                    // ★ 修正: plId
+                    resultPl = await invoke("update_smart_playlist", { plId: this.editingSmartId, name: name, conditions: rules });
                     const idx = s.playlists.findIndex(p => p.id === this.editingSmartId);
                     if (idx !== -1) s.playlists[idx] = resultPl;
                     u.showToast("更新しました", false);
                 } else {
-                    resultPl = await eel.create_smart_playlist(name, rules)();
+                    resultPl = await invoke("create_smart_playlist", { name: name, conditions: rules });
                     s.playlists.push(resultPl);
                     u.showToast("作成しました", false);
                 }
                 s.playlists.sort((a, b) => (a.playlistName||"").toLowerCase().localeCompare((b.playlistName||"").toLowerCase(), 'ja'));
-                window.SidebarController.renderSidebar();
+                this.renderSidebar();
                 window.MainViewController.selectPlaylist(s.playlists.findIndex(p => p.id === resultPl.id));
-            } catch(e) { u.showToast("処理に失敗しました", true); } finally { window.SidebarController.hideSaving(); }
+            } catch(e) { u.showToast("処理に失敗しました", true); }
         }
     });
 })();

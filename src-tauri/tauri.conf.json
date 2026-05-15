@@ -1,9 +1,11 @@
 {
-  "$schema": "https://schema.tauri.app/config/2",
+  "$schema": "https://schema.tauri.app/2.0.0/tauri.schema.json",
   "productName": "Chordia",
-  "version": "0.1.0",
-  "identifier": "com.tauri.dev",
+  "version": "2.6.2",
+  "identifier": "com.bellrin.chordia",
   "build": {
+    "beforeDevCommand": "",
+    "beforeBuildCommand": "",
     "frontendDist": "../app"
   },
   "app": {
@@ -18,6 +20,10 @@
       }
     ],
     "security": {
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["**"]
+      },
       "csp": null
     }
   },

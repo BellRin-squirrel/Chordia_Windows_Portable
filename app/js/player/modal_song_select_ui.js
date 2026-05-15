@@ -69,6 +69,7 @@
         },
 
         open: async function(pl_id) {
+            const invoke = window.__TAURI__.core ? window.__TAURI__.core.invoke : window.__TAURI__.tauri.invoke;
             const modal = document.getElementById('songSelectModal');
 
             if (!this.isRendered) {
@@ -79,8 +80,8 @@
                 head.textContent = "編集画面を準備中...";
 
                 try {
-                    const settings = await eel.get_app_settings()();
-                    const allTags = await eel.get_available_tags()();
+                    const settings = await invoke("get_app_settings");
+                    const allTags = await invoke("get_available_tags");
                     this.activeTags = allTags.filter(t => settings.active_tags.includes(t.key));
                     
                     this.advSearchTags = this.activeTags.map(t => ({val: t.key, label: t.label}));
@@ -350,7 +351,6 @@
             const searchInput = document.getElementById('songSelectSearch');
             this.filterData(searchInput ? searchInput.value : '');
             
-            // ★ 修正: CSSクラス(active)を使ってボタンの装飾を変更
             const btnAdv = document.getElementById('btnSongSelectAdvSearch');
             if (btnAdv) btnAdv.classList.add('active');
         },
@@ -363,7 +363,6 @@
             const searchInput = document.getElementById('songSelectSearch');
             this.filterData(searchInput ? searchInput.value : '');
 
-            // ★ 修正: CSSクラス(active)を外して装飾をリセット
             const btnAdv = document.getElementById('btnSongSelectAdvSearch');
             if (btnAdv) btnAdv.classList.remove('active');
         },

@@ -1,7 +1,6 @@
 (function() {
     const s = window.PlayerState;
     const u = window.PlayerUtils;
-    const invoke = window.__TAURI__.core ? window.__TAURI__.core.invoke : window.__TAURI__.tauri.invoke;
 
     window.SidebarController = {
         deleteTargetIndex: -1,
@@ -53,15 +52,15 @@
             setClick('menuRenamePlaylist', () => { s.editingPlaylistIndex = s.contextTargetIndex; window.SidebarController.renderSidebar(); });
             
             setClick('menuDuplicatePlaylist', async () => {
-                window.SidebarController.showSaving();
+                const invoke = window.__TAURI__.core ? window.__TAURI__.core.invoke : window.__TAURI__.tauri.invoke;
                 const plId = s.playlists[s.contextTargetIndex].id;
+                // ★ 修正: plId
                 const newPl = await invoke("duplicate_playlist_by_id", { plId: plId });
                 if (newPl) {
                     s.playlists.push(newPl);
                     s.playlists.sort((a, b) => (a.playlistName||"").toLowerCase().localeCompare((b.playlistName||"").toLowerCase(), 'ja'));
                     window.SidebarController.renderSidebar();
                 }
-                window.SidebarController.hideSaving();
                 u.showToast("複製しました", false);
             });
 
@@ -110,6 +109,41 @@
             });
         },
 
+        createDynamicCustomSelector: function(options, currentValue, onSelect) {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'custom-select-wrapper';
+            const trigger = document.createElement('button');
+            trigger.type = 'button';
+            trigger.className = 'custom-select-trigger';
+            const currentLabel = options.find(o => o.val === currentValue)?.label || currentValue;
+            trigger.innerHTML = `<span>${currentLabel}</span><svg class="custom-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>`;
+            
+            const dropdown = document.createElement('div');
+            dropdown.className = 'custom-select-dropdown';
+            options.forEach(opt => {
+                const item = document.createElement('div');
+                item.className = 'custom-option' + (opt.val === currentValue ? ' active' : '');
+                item.innerHTML = `<svg class="custom-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M4.5 12.75l6 6 9-13.5" /></svg><span>${opt.label}</span>`;
+                item.onclick = (e) => {
+                    e.stopPropagation();
+                    trigger.querySelector('span').textContent = opt.label;
+                    dropdown.querySelectorAll('.custom-option').forEach(o => o.classList.remove('active'));
+                    item.classList.add('active');
+                    onSelect(opt.val);
+                    dropdown.classList.remove('show');
+                };
+                dropdown.appendChild(item);
+            });
+            trigger.onclick = (e) => {
+                e.stopPropagation();
+                document.querySelectorAll('.custom-select-dropdown').forEach(d => { if (d !== dropdown) d.classList.remove('show'); });
+                dropdown.classList.toggle('show');
+            };
+            wrapper.appendChild(trigger);
+            wrapper.appendChild(dropdown);
+            return wrapper;
+        },
+
         startRenameById: function(plId) {
             const idx = s.playlists.findIndex(p => p.id === plId);
             if (idx !== -1) {
@@ -118,49 +152,28 @@
             }
         },
 
-        showSaving: function() { 
-            const el = document.getElementById('savingOverlay');
-            if(el) el.style.display = 'flex'; 
-        },
-        hideSaving: function() { 
-            const el = document.getElementById('savingOverlay');
-            if(el) el.style.display = 'none'; 
-        },
-
         loadPlaylists: async function() {
-            u.showLoading();
+            const invoke = window.__TAURI__.core ? window.__TAURI__.core.invoke : window.__TAURI__.tauri.invoke;
             try {
-                const settings = await invoke("get_app_settings");
-                s.fullLibrary = await invoke("get_library_data_with_meta", { includeImages: true });
-
                 const summaries = await invoke("get_playlist_summaries");
                 summaries.sort((a, b) => (a.playlistName||"").toLowerCase().localeCompare((b.playlistName||"").toLowerCase(), 'ja'));
                 
-                s.playlists = summaries.map(pl => ({...pl, songs: null}));
-
-                if (!settings.lazy_load_playlists) {
-                    const total = s.playlists.length;
-                    for (let i = 0; i < total; i++) {
-                        const pl = s.playlists[i];
-                        u.updateLoadingProgress(i + 1, total, `「${pl.playlistName}」を読み込み中...`);
-                        const details = await invoke("get_playlist_details", { plId: pl.id });
-                        if (details) s.playlists[i] = details;
-                    }
-                }
-
+                s.playlists = summaries;
                 this.renderSidebar();
-                if (s.playlists.length > 0) window.MainViewController.selectPlaylist(0);
+                
+                if (s.playlists.length > 0 && s.currentPlaylistIndex === -1) {
+                    window.MainViewController.selectPlaylist(0);
+                }
             } catch (e) { 
                 console.error("Load Error:", e); 
-                u.showToast("読み込み中にエラーが発生しました", true);
-            } finally { 
-                u.hideLoading(); 
+                u.showToast("プレイリストの読み込みに失敗しました", true);
             }
         },
 
         renderSidebar: async function() {
             if(!this.playlistList) return;
             this.playlistList.innerHTML = '';
+            const invoke = window.__TAURI__.core ? window.__TAURI__.core.invoke : window.__TAURI__.tauri.invoke;
             
             if (this.currentView === 'playlist') {
                 s.playlists.forEach((pl, index) => {
@@ -229,9 +242,8 @@
         },
 
         selectVirtualPlaylist: async function(field, value) {
-            u.showLoading();
+            const invoke = window.__TAURI__.core ? window.__TAURI__.core.invoke : window.__TAURI__.tauri.invoke;
             try {
-                u.updateLoadingProgress(0, 0, `「${value}」の楽曲を抽出中...`);
                 const virtualPl = await invoke("get_virtual_playlist_details", { field: field, value: value });
                 if (virtualPl) {
                     s.currentVirtualPlaylist = virtualPl;
@@ -239,10 +251,13 @@
                     s.currentVirtualName = value;
                     s.currentVirtualField = field;
                     s.currentPlaylistIndex = -1; 
+                    
                     this.renderSidebar();
                     window.MainViewController.renderMainView();
                 }
-            } catch(e) { u.showToast("読み込みに失敗しました", true); } finally { u.hideLoading(); }
+            } catch(e) {
+                console.error(e);
+            }
         },
 
         createTemporaryInput: function(type = 'normal') {
@@ -268,32 +283,33 @@
 
         finishCreate: async function(name, type) {
             s.editingPlaylistIndex = -1;
-            window.SidebarController.showSaving();
+            const invoke = window.__TAURI__.core ? window.__TAURI__.core.invoke : window.__TAURI__.tauri.invoke;
+            // ★ 修正: plType
             const newPl = await invoke("create_playlist", { name: name, plType: type }); 
             if (newPl) {
                 s.playlists.push(newPl);
                 s.playlists.sort((a, b) => (a.playlistName||"").toLowerCase().localeCompare((b.playlistName||"").toLowerCase(), 'ja'));
-                window.SidebarController.renderSidebar();
+                this.renderSidebar();
                 window.MainViewController.selectPlaylist(s.playlists.findIndex(p => p.id === newPl.id));
             }
-            window.SidebarController.hideSaving();
             u.showToast("作成しました", false);
         },
 
         finishRename: async function(index, newName) {
             s.editingPlaylistIndex = -1;
-            if(!newName.trim()) { window.SidebarController.renderSidebar(); return; }
-            window.SidebarController.showSaving();
+            if(!newName.trim()) { this.renderSidebar(); return; }
+            const invoke = window.__TAURI__.core ? window.__TAURI__.core.invoke : window.__TAURI__.tauri.invoke;
             const plId = s.playlists[index].id;
+            // ★ 修正: plId
             const updatedPl = await invoke("update_playlist_by_id", { plId: plId, field: 'playlistName', value: newName }); 
             if (updatedPl) {
                 s.playlists[index].playlistName = updatedPl.playlistName; 
                 s.playlists.sort((a, b) => (a.playlistName||"").toLowerCase().localeCompare((b.playlistName||"").toLowerCase(), 'ja'));
-                window.SidebarController.renderSidebar();
-                s.currentPlaylistIndex = s.playlists.findIndex(p => p.id === plId);
-                window.SidebarController.renderSidebar();
+                this.renderSidebar();
+                const newIdx = s.playlists.findIndex(p => p.id === plId);
+                s.currentPlaylistIndex = newIdx;
+                this.renderSidebar();
             }
-            window.SidebarController.hideSaving();
             u.showToast("更新しました", false);
         },
 
@@ -304,7 +320,7 @@
             menu.style.position = 'fixed'; 
             menu.style.display = 'block'; 
             menu.style.visibility = 'hidden'; 
-            let mw = menu.offsetWidth || 220; let mh = menu.offsetHeight || 220; 
+            const mw = menu.offsetWidth || 220; const mh = menu.offsetHeight || 220; 
             if (x + mw > window.innerWidth) x -= mw;
             if (y + mh > window.innerHeight) y -= mh;
             menu.style.left = `${x}px`; menu.style.top = `${y}px`; menu.style.visibility = 'visible'; 
@@ -322,13 +338,13 @@
         executeDelete: async function() {
             const modal = document.getElementById('playlistDeleteModal');
             if(modal) modal.classList.remove('show');
-            window.SidebarController.showSaving();
+            const invoke = window.__TAURI__.core ? window.__TAURI__.core.invoke : window.__TAURI__.tauri.invoke;
             const plId = s.playlists[this.deleteTargetIndex].id;
+            // ★ 修正: plId
             await invoke("delete_playlist_by_id", { plId: plId });
             if (this.deleteTargetIndex === s.currentPlaylistIndex) s.currentPlaylistIndex = -1;
             s.playlists.splice(this.deleteTargetIndex, 1);
-            window.SidebarController.renderSidebar();
-            window.SidebarController.hideSaving();
+            this.renderSidebar();
             u.showToast("削除しました", false);
         }
     };

@@ -7,7 +7,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     const chkNewWindow = document.getElementById('openPlayerNewWindow');
     const chkManageNewWindow = document.getElementById('openManageNewWindow');
     const chkDevMode = document.getElementById('developerMode'); 
-    const chkLazyLoad = document.getElementById('lazyLoadPlaylists'); 
     const itemsPerPage = document.getElementById('itemsPerPage');
     const primaryColor = document.getElementById('primaryColor');
 
@@ -48,7 +47,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         return `rgba(${r}, ${g}, ${b}, ${alpha})`;
     }
 
-    // ★ Python(eel)からRust(invoke)へ変更
     const settings = await invoke("get_app_settings");
     currentSettings = settings;
     selectedThemeMode = settings.theme_mode || 'light';
@@ -59,7 +57,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     chkNewWindow.checked = settings.open_player_new_window;
     chkManageNewWindow.checked = settings.open_manage_new_window;
     chkDevMode.checked = settings.developer_mode;
-    chkLazyLoad.checked = settings.lazy_load_playlists; 
     primaryColor.value = settings.primary_color;
 
     customSelectTrigger.onclick = (e) => {
@@ -162,7 +159,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             open_player_new_window: chkNewWindow.checked,
             open_manage_new_window: chkManageNewWindow.checked,
             developer_mode: chkDevMode.checked,
-            lazy_load_playlists: chkLazyLoad.checked, 
+            lazy_load_playlists: false, 
             primary_color: primaryColor.value,
             theme_mode: selectedThemeMode,
             background_color: backgroundColor.value,
@@ -173,7 +170,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         };
 
         currentSettings = newSettings;
-        // ★invokeに変更
         const success = await invoke("save_app_settings", { settings: newSettings });
         if (success) {
             const root = document.documentElement;
@@ -211,8 +207,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         devWarningModal.style.display = 'none';
     });
 
-    [itemsPerPage, chkNewWindow, chkManageNewWindow, chkLazyLoad, primaryColor, backgroundColor, subBackgroundColor, textColor].forEach(el => {
-        el.addEventListener('change', saveAllSettings);
+    [itemsPerPage, chkNewWindow, chkManageNewWindow, primaryColor, backgroundColor, subBackgroundColor, textColor].forEach(el => {
+        if (el) el.addEventListener('change', saveAllSettings);
     });
 
     btnSaveOriginalTheme.addEventListener('click', () => {
@@ -231,7 +227,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         const colors = { bg: backgroundColor.value, subBg: subBackgroundColor.value, text: textColor.value };
-        // ★invokeに変更
         const success = await invoke("save_custom_theme", { name: name, colors: colors });
         if (success) {
             customThemes[name] = colors;
@@ -246,7 +241,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     btnDeleteOriginalTheme.addEventListener('click', async () => {
         const name = selectedThemeMode;
         if (confirm(`テーマ "${name}" を削除してもよろしいですか？`)) {
-            // ★invokeに変更
             const success = await invoke("delete_custom_theme", { name: name });
             if (success) {
                 delete customThemes[name];
@@ -280,12 +274,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     renderCombinedTagList();
 
-    // ★ ベース64データを直接受け取るように変更
     const b64Data = await invoke("get_default_art_url");
     if (b64Data) {
         artPreview.src = b64Data;
     } else {
-        artPreview.src = 'icon/Chordia.png'; // フォールバック
+        artPreview.src = 'icon/Chordia.png'; 
     }
 
     artInput.addEventListener('change', (e) => {
@@ -295,7 +288,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         reader.onload = async (event) => {
             const b64 = event.target.result;
             artPreview.src = b64;
-            // ★invokeに変更
             await invoke("update_default_artwork", { b64Data: b64 });
             showToast("初期画像を更新しました");
         };
@@ -303,7 +295,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     btnRestoreArt.addEventListener('click', async () => {
-        // ★invokeに変更
         const success = await invoke("reset_default_artwork");
         if (success) {
             const url = await invoke("get_default_art_url");

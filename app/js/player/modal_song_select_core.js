@@ -10,7 +10,7 @@
         lastClickedIndex: null,
         _tempContextId: null,
         activeTags:[],
-        advancedConditions: null, // ★高度な検索条件の保持用
+        advancedConditions: null, 
 
         findTargetPlaylistId: function() {
             if (this._tempContextId) return this._tempContextId;
@@ -25,7 +25,6 @@
             return s.currentPlaylistId || null;
         },
 
-        // ★JS上でのスマート条件評価ロジック
         evaluateSmartRules: function(song, ruleItem) {
             if (!ruleItem) return true;
             if (ruleItem.type === 'group') {
@@ -103,8 +102,10 @@
             btn.disabled = true; btn.textContent = "保存中...";
             
             try {
+                const invoke = window.__TAURI__.core ? window.__TAURI__.core.invoke : window.__TAURI__.tauri.invoke;
                 const newSongs = Array.from(this.selectedFilenames);
-                const updatedPl = await eel.update_playlist_by_id(this.currentPlaylistId, 'music', newSongs)();
+                // ★ 修正: plId
+                const updatedPl = await invoke("update_playlist_by_id", { plId: this.currentPlaylistId, field: 'music', value: newSongs });
                 if (updatedPl) {
                     const idx = s.playlists.findIndex(p => p.id === this.currentPlaylistId);
                     if (idx !== -1) s.playlists[idx] = updatedPl;

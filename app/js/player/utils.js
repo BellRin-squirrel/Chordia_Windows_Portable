@@ -67,13 +67,3 @@ window.PlayerUtils = {
         return list;
     }
 };
-
-eel.expose(js_music_load_progress);
-function js_music_load_progress(c, t) {
-    if (window.PlayerUtils) window.PlayerUtils.updateLoadingProgress(c, t, "楽曲一覧を取得中...");
-}
-
-eel.expose(js_playlist_progress);
-function js_playlist_progress(c, t) {
-    if (window.PlayerUtils) window.PlayerUtils.updateLoadingProgress(c, t, "プレイリスト一覧を取得中...");
-}

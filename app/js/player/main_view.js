@@ -1,7 +1,6 @@
 (function() {
     const s = window.PlayerState;
     const u = window.PlayerUtils;
-    const invoke = window.__TAURI__.core ? window.__TAURI__.core.invoke : window.__TAURI__.tauri.invoke;
 
     window.MainViewController = {
         playerSettings: null,
@@ -9,11 +8,13 @@
         lastTrackClickedIndex: null,    
 
         init: function() {
-            const btnPlayAll = document.getElementById('btnPlayAll');
-            if (btnPlayAll) btnPlayAll.addEventListener('click', () => window.PlayerController.startPlaybackSession('normal'));
-            
-            const btnShuffleAll = document.getElementById('btnShuffleAll');
-            if (btnShuffleAll) btnShuffleAll.addEventListener('click', () => window.PlayerController.startPlaybackSession('shuffle'));
+            const setClick = (id, fn) => {
+                const el = document.getElementById(id);
+                if (el) el.addEventListener('click', fn);
+            };
+
+            setClick('btnPlayAll', () => window.PlayerController.startPlaybackSession('normal'));
+            setClick('btnShuffleAll', () => window.PlayerController.startPlaybackSession('shuffle'));
             
             document.addEventListener('click', (e) => {
                 const isClickInTable = e.target.closest('.song-table tr');
@@ -52,29 +53,28 @@
         },
 
         initTrackMenuEvents: function() {
-            document.getElementById('menuSongInfo').onclick = () => this.openSongInfoModal();
-            document.getElementById('menuEditSmartRules').onclick = () => {
-                const plData = s.playlists[s.currentPlaylistIndex];
-                if (window.SidebarController) window.SidebarController.openSmartPlaylistModal(plData);
-            };
-            document.getElementById('menuShowInExplorer').onclick = () => {
-                const songs = this.getSelectedSongs();
-                if (songs.length > 0) invoke("open_in_explorer", { musicFilename: songs[0].musicFilename });
-            };
-            document.getElementById('menuRemoveFromPlaylist').onclick = async () => {
+            const invoke = window.__TAURI__.core ? window.__TAURI__.core.invoke : window.__TAURI__.tauri.invoke;
+            const setClick = (id, fn) => { const el = document.getElementById(id); if (el) el.onclick = fn; };
+
+            setClick('menuSongInfo', () => this.openSongInfoModal());
+            setClick('menuEditSmartRules', () => window.SidebarController.openSmartPlaylistModal(s.playlists[s.currentPlaylistIndex]));
+            setClick('menuShowInExplorer', () => u.showToast("エクスプローラー表示は準備中です", true));
+            
+            setClick('menuRemoveFromPlaylist', async () => {
                 const pl = s.playlists[s.currentPlaylistIndex];
+                if (!pl) return;
                 const songs = this.getSelectedSongs().map(song => song.musicFilename.split(/[\\/]/).pop());
-                if (pl.type === 'smart') this.openSmartRemoveConfirmModal(pl.id, songs);
-                else {
+                if (pl.type === 'smart') {
+                    this.openSmartRemoveConfirmModal(pl.id, songs);
+                } else {
                     const res = await invoke("remove_songs_from_playlist", { plId: pl.id, filenames: songs });
                     if (res) { 
-                        const updated = await invoke("get_playlist_details", { plId: pl.id });
-                        s.playlists[s.currentPlaylistIndex] = updated; 
+                        s.playlists[s.currentPlaylistIndex] = res; 
                         this.renderMainView(); 
                         u.showToast("削除しました", false); 
                     }
                 }
-            };
+            });
         },
 
         initSmartRemoveModal: function() {
@@ -82,14 +82,14 @@
             if (!modal) return;
             const btnCancel = document.getElementById('btnCancelSmartRemove');
             const btnExec = document.getElementById('btnExecSmartRemove');
-            btnCancel.onclick = () => modal.classList.remove('show');
+            if (btnCancel) btnCancel.onclick = () => modal.classList.remove('show');
             if (btnExec) {
                 btnExec.onclick = async () => {
                     modal.classList.remove('show');
-                    window.SidebarController.showSaving();
                     const plId = modal.dataset.plId;
                     const songs = JSON.parse(modal.dataset.songs);
                     try {
+                        const invoke = window.__TAURI__.core ? window.__TAURI__.core.invoke : window.__TAURI__.tauri.invoke;
                         const res = await invoke("convert_smart_to_normal_and_remove_songs", { plId: plId, filenames: songs });
                         if (res) {
                             await window.SidebarController.loadPlaylists();
@@ -97,7 +97,7 @@
                             if (newIdx !== -1) window.MainViewController.selectPlaylist(newIdx);
                             u.showToast("通常プレイリストに変換し削除しました", false);
                         }
-                    } catch (e) { u.showToast("処理に失敗しました", true); } finally { window.SidebarController.hideSaving(); }
+                    } catch (e) { u.showToast("処理に失敗しました", true); }
                 };
             }
         },
@@ -110,6 +110,9 @@
             modal.classList.add('show');
         },
 
+        // ==========================================
+        // ★ ここに時間計測 (console.time) を仕込みました
+        // ==========================================
         selectPlaylist: async function(index) {
             if (index === -1 || !s.playlists[index]) return;
 
@@ -120,22 +123,23 @@
             window.SidebarController.renderSidebar(); 
 
             const pl = s.playlists[index];
+            const invoke = window.__TAURI__.core ? window.__TAURI__.core.invoke : window.__TAURI__.tauri.invoke;
 
-            if (pl.songs === null) {
-                u.showLoading();
-                try {
-                    u.updateLoadingProgress(0, 0, `「${pl.playlistName}」を読み込み中...`);
-                    const details = await invoke("get_playlist_details", { plId: pl.id });
-                    if (details) s.playlists[index] = details; 
-                } catch (e) {
-                    console.error(e);
-                    u.showToast("プレイリストの読み込みに失敗しました", true);
-                } finally {
-                    u.hideLoading();
+            try {
+                console.time("[計測] 1. Rust からデータを取得 (get_playlist_details)");
+                const details = await invoke("get_playlist_details", { plId: pl.id });
+                console.timeEnd("[計測] 1. Rust からデータを取得 (get_playlist_details)");
+
+                if (details) {
+                    s.playlists[index] = details; 
                 }
+            } catch (e) {
+                console.error(e);
             }
 
-            this.renderMainView();
+            console.time("[計測] 2. 画面の描画処理全体 (renderMainView)");
+            await this.renderMainView(); // renderMainViewの終了を待つ
+            console.timeEnd("[計測] 2. 画面の描画処理全体 (renderMainView)");
         },
 
         clearSelection: function() {
@@ -217,18 +221,21 @@
                 if (p.type !== 'smart') {
                     const li = document.createElement('li'); li.textContent = p.playlistName;
                     li.onclick = async () => {
+                        const invoke = window.__TAURI__.core ? window.__TAURI__.core.invoke : window.__TAURI__.tauri.invoke;
                         const songs = this.getSelectedSongs().map(song => song.musicFilename.split(/[\\/]/).pop());
                         let targetPl = s.playlists.find(pl => pl.id === p.id);
                         if (!targetPl.music) targetPl = await invoke("get_playlist_details", { plId: p.id });
                         
                         const existingMusic = targetPl.music ||[];
                         const newSongs = songs.filter(fname => !existingMusic.includes(fname));
-                        if (newSongs.length === 0) {
-                            u.showToast(`すでに「${p.playlistName}」に追加されています`, true);
-                            return;
+                        if (newSongs.length === 0) { u.showToast(`すでに追加されています`, true); return; }
+
+                        const res = await invoke("add_songs_to_playlist", { plId: p.id, filenames: newSongs });
+                        if (res) {
+                            const idx = s.playlists.findIndex(pl => pl.id === res.id);
+                            if (idx !== -1) s.playlists[idx] = res; 
+                            u.showToast(`追加しました`, false);
                         }
-                        await invoke("add_songs_to_playlist", { plId: p.id, filenames: newSongs });
-                        u.showToast(`追加しました`, false);
                     };
                     ul.appendChild(li);
                 }
@@ -236,6 +243,7 @@
             const btnSubNew = document.getElementById('subNewPlaylist');
             if (btnSubNew) {
                 btnSubNew.onclick = async () => {
+                    const invoke = window.__TAURI__.core ? window.__TAURI__.core.invoke : window.__TAURI__.tauri.invoke;
                     const songs = this.getSelectedSongs();
                     const filenames = songs.map(song => song.musicFilename.split(/[\\/]/).pop());
                     const defaultName = songs.length === 1 ? songs[0].title : `${songs.length}個の楽曲`;
@@ -257,7 +265,7 @@
             if (!modal) return;
 
             const isVirtual = s.currentPlaylistType === 'virtual';
-            const plName = isVirtual ? s.currentVirtualName : s.playlists[s.currentPlaylistIndex].playlistName;
+            const plName = isVirtual ? s.currentVirtualName : (s.playlists[s.currentPlaylistIndex] ? s.playlists[s.currentPlaylistIndex].playlistName : "Unknown");
 
             const imgEl = document.getElementById('infoArt');
             const largeImgEl = document.getElementById('largeArt');
@@ -291,6 +299,7 @@
             const detailsList = document.getElementById('detailsList'); 
             if (detailsList) {
                 detailsList.innerHTML = '';
+                const invoke = window.__TAURI__.core ? window.__TAURI__.core.invoke : window.__TAURI__.tauri.invoke;
                 if (!this.playerSettings) this.playerSettings = await invoke("get_app_settings");
                 const allTags = await invoke("get_available_tags");
                 const dbTags = allTags.filter(t => this.playerSettings.active_tags.includes(t.key));
@@ -353,8 +362,10 @@
             const target = isVirtual ? s.currentVirtualPlaylist : s.playlists[s.currentPlaylistIndex];
 
             if (!target || target.songs === null) return;
+            const invoke = window.__TAURI__.core ? window.__TAURI__.core.invoke : window.__TAURI__.tauri.invoke;
             if (!this.playerSettings) this.playerSettings = await invoke("get_app_settings");
 
+            console.time("[計測] 2-1. ソートと初期設定");
             const plData = target;
             const isDesc = plData.sortDesc === true;
             const songs = u.sortSongs(plData.songs, plData.sortBy, isDesc);
@@ -371,6 +382,7 @@
                 }
             });
             document.getElementById('currentPlaylistDuration').textContent = u.formatTotalDuration(totalSec);
+            console.timeEnd("[計測] 2-1. ソートと初期設定");
 
             const sortArea = document.getElementById('phSortArea');
             if (sortArea) {
@@ -411,20 +423,19 @@
                 sortArea.appendChild(orderSelector);
             }
 
-            const cover = document.getElementById('playlistCoverArt');
-            if (cover) {
-                if (songs.length>0 && songs[0].imageData) cover.src = songs[0].imageData;
-                else cover.src = s.DEFAULT_ICON;
-            }
-
             document.getElementById('playlistActions').style.display = 'flex';
             const tbody = document.getElementById('songListBody');
             if (!tbody) return;
+            
+            console.time("[計測] 2-2. DOMの構築 (Fragment使用)");
             tbody.innerHTML = '';
+            
+            // ★ 修正: 画面の描画を圧倒的に早くするため DocumentFragment を使用
+            const fragment = document.createDocumentFragment();
             
             songs.forEach((song, idx) => {
                 const tr = document.createElement('tr');
-                const isPlaying = window.PlayerController.isSongPlaying(song);
+                const isPlaying = window.PlayerController && window.PlayerController.isSongPlaying(song);
                 if (isPlaying) tr.classList.add('current-playing');
                 if (this.selectedTrackIndices.has(idx)) tr.classList.add('selected');
                 const artSrc = song.imageData || s.DEFAULT_ICON;
@@ -454,8 +465,12 @@
                     if (e.target.closest('.art-container')) return;
                     window.PlayerController.startPlaybackSession('normal', idx);
                 };
-                tbody.appendChild(tr);
+                fragment.appendChild(tr);
             });
+            
+            // 全ての行を一気にテーブルへ追加する
+            tbody.appendChild(fragment);
+            console.timeEnd("[計測] 2-2. DOMの構築 (Fragment使用)");
         },
 
         playTrackAtIndex: function(idx) {

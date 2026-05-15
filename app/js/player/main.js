@@ -6,16 +6,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (window.PlayerController) window.PlayerController.init();
         if (window.ModalSongSelect) window.ModalSongSelect.init();
 
-        const settings = await eel.get_app_settings()();
+        const invoke = window.__TAURI__.core ? window.__TAURI__.core.invoke : window.__TAURI__.tauri.invoke;
+        const settings = await invoke("get_app_settings");
+        
         if (settings && settings.open_player_new_window) {
             const backLink = document.querySelector('.back-link');
             if (backLink) {
                 backLink.style.display = 'none';
             }
         }
-        await eel.migrate_lyrics_to_db()();
         
-        // ★ 修正: 起動直後にサイドバーの初期読み込みを実行
+        // 起動直後にサイドバーの初期読み込みを実行
         if (window.SidebarController) {
             await window.SidebarController.loadPlaylists();
         }
