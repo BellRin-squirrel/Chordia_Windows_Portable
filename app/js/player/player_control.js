@@ -33,15 +33,7 @@
             if (btnPrev) btnPrev.addEventListener('click', () => this.prevSong());
             
             const btnStop = document.getElementById('hdrBtnStop');
-            if (btnStop) btnStop.addEventListener('click', () => {
-                this.stopPlayback();
-                const info = document.getElementById('headerPlayerInfo');
-                const ctrl = document.getElementById('headerControls');
-                const logo = document.getElementById('headerLogo');
-                if (info) info.style.display = 'none';
-                if (ctrl) ctrl.style.display = 'none';
-                if (logo) logo.style.display = 'flex';
-            });
+            if (btnStop) btnStop.addEventListener('click', () => this.stopPlayback());
 
             if (this.audio) {
                 this.audio.addEventListener('ended', () => this.nextSong());
@@ -61,7 +53,7 @@
                             if (totEl) totEl.textContent = u.formatTime(dur);
                             
                             const now = Date.now();
-                            if (now - this.lastMiniPushTime > 1000) {
+                            if (now - this.lastMiniPushTime > 500) {
                                 this.pushStateToMini();
                                 this.lastMiniPushTime = now;
                             }
@@ -83,41 +75,142 @@
                 this.updateSeekColor(0);
             }
 
+            // ==========================================
+            // ★ プレイヤー画面用 キーボードショートカット
+            // ==========================================
             document.addEventListener('keydown', (e) => {
+                // Ctrl + F: 検索ボックスへフォーカス
+                if ((e.ctrlKey || e.metaKey) && e.code === 'KeyF') {
+                    e.preventDefault(); e.stopPropagation();
+                    const searchBox = document.getElementById('playlistLocalSearch');
+                    if (searchBox) searchBox.focus();
+                    return;
+                }
+
+                // 入力中は他のショートカットを無視
                 if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return;
-                if (e.code === 'Space') {
-                    e.preventDefault();
+                
+                let handled = true;
+
+                if (e.code === 'Space' || e.code === 'KeyK') {
                     if (e.shiftKey) {
-                        const info = document.getElementById('headerPlayerInfo');
-                        if (info && info.style.display !== 'none') {
-                            const btn = document.getElementById('hdrBtnStop');
-                            if (btn) btn.click();
-                        }
+                        this.stopPlayback(); 
                     } else if (s.queue.length > 0) {
                         this.togglePlayPause();
                     }
+                } else if (e.code === 'ArrowRight') {
+                    this.nextSong();
+                } else if (e.code === 'ArrowLeft') {
+                    this.prevSong();
+                } else if (e.code === 'KeyL') {
+                    if (window.HeaderController) window.HeaderController.openQueueLyricsModal('tab-current-lyrics');
+                } else if (e.code === 'KeyQ') {
+                    if (window.HeaderController) window.HeaderController.openQueueLyricsModal('tab-nextup');
+                } else if (e.code === 'KeyH') {
+                    if (window.HeaderController) window.HeaderController.openQueueLyricsModal('tab-history');
+                } else if (e.code === 'KeyR') {
+                    const btn = document.getElementById('btnLoopToggle');
+                    if (btn) btn.click();
+                } else if (e.code === 'KeyS') {
+                    const btn = document.getElementById('btnShuffleToggle');
+                    if (btn) btn.click();
+                } else if (e.code === 'KeyV') {
+                    if (e.shiftKey) {
+                        const btn = document.getElementById('btnShuffleAll');
+                        if (btn) btn.click();
+                    } else {
+                        const btn = document.getElementById('btnPlayAll');
+                        if (btn) btn.click();
+                    }
+                } else if (e.code === 'KeyE') {
+                    const btn = document.getElementById('btnEditRules');
+                    if (btn && btn.style.display !== 'none') btn.click();
+                } else if (e.altKey && e.shiftKey && (e.code === 'ArrowUp' || e.code === 'ArrowDown')) {
+                    if (window.SidebarController) {
+                        const views = ['playlist', 'album', 'artist'];
+                        let idx = views.indexOf(window.SidebarController.currentView);
+                        if (e.code === 'ArrowUp') idx = (idx - 1 + views.length) % views.length;
+                        else idx = (idx + 1) % views.length;
+                        const opt = document.querySelector(`.custom-option[data-value="${views[idx]}"]`);
+                        if (opt) opt.click();
+                    }
+                } else if (e.altKey && !e.shiftKey && (e.code === 'ArrowUp' || e.code === 'ArrowDown')) {
+                    const items = Array.from(document.querySelectorAll('#playlistList .playlist-item'));
+                    const activeIdx = items.findIndex(item => item.classList.contains('active'));
+                    if (items.length > 0) {
+                        let nextIdx = 0;
+                        if (activeIdx !== -1) {
+                            if (e.code === 'ArrowUp') nextIdx = (activeIdx - 1 + items.length) % items.length;
+                            else nextIdx = (activeIdx + 1) % items.length;
+                        }
+                        items[nextIdx].click();
+                        items[nextIdx].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                    }
+                } else {
+                    handled = false;
+                }
+
+                if (handled) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (document.activeElement) document.activeElement.blur();
+                }
+            });
+
+            window.addEventListener('storage', (e) => {
+                if (e.key === 'mini_player_command' && e.newValue) {
+                    try {
+                        const cmd = JSON.parse(e.newValue);
+                        if (cmd.action === 'togglePlayPause') this.togglePlayPause();
+                        else if (cmd.action === 'nextSong') this.nextSong();
+                        else if (cmd.action === 'prevSong') this.prevSong();
+                        else if (cmd.action === 'stopPlayback') this.stopPlayback();
+                        else if (cmd.action === 'seek' && this.audio && this.audio.duration) {
+                            this.audio.currentTime = cmd.value * this.audio.duration;
+                            this.pushStateToMini(true);
+                        }
+                    } catch(err) { console.error(err); }
                 }
             });
         },
 
+        generateSection: function(isShuffle) {
+            if (isShuffle) {
+                return u.shuffleArray([...s.originalList]);
+            } else {
+                return [...s.originalList];
+            }
+        },
+
+        handleSortChanged: function(songs, sortBy, sortDesc) {
+            s.originalList = [...u.sortSongs(songs, sortBy, sortDesc)];
+            if (!s.isShuffle && s.queue.length > 0 && s.currentIndex >= 0) {
+                const currentSong = s.queue[s.currentIndex];
+                s.queue = [...s.originalList];
+                const newIndex = s.queue.findIndex(song => song.musicFilename === currentSong.musicFilename);
+                if (newIndex !== -1) {
+                    s.currentIndex = newIndex;
+                } else {
+                    s.currentIndex = 0; 
+                }
+                this.pushStateToMini(true);
+            }
+        },
+
         pushStateToMini: function(force = false) {
             if (!this.audio) return;
+            let displayQueue = [];
+            if (s.loopMode !== 'one') {
+                displayQueue = s.queue.slice(s.currentIndex + 1, s.currentIndex + 52);
+            }
             const state = {
                 song: s.queue[s.currentIndex] || null,
                 isPlaying: s.isPlaying,
                 currentTime: this.audio.currentTime,
                 duration: this.audio.duration,
-                queue: s.queue.slice(s.currentIndex + 1, s.currentIndex + 52)
+                queue: displayQueue
             };
-            
-            if (window.HeaderController && window.HeaderController.miniPlayerWindow) {
-                const miniWin = window.HeaderController.miniPlayerWindow;
-                if (!miniWin.closed && miniWin.MiniPlayer) {
-                    try {
-                        miniWin.MiniPlayer.render(state);
-                    } catch (e) {}
-                }
-            }
+            localStorage.setItem('mini_player_state', JSON.stringify(state));
         },
 
         setVolume: function(val) {
@@ -145,13 +238,11 @@
 
             if (mode === 'shuffle') {
                 s.isShuffle = true;
-                s.loopMode = 'off';
-                s.queue = u.shuffleArray([...s.originalList]);
+                s.queue = this.generateSection(true);
                 s.currentIndex = 0;
             } else {
                 s.isShuffle = false;
-                s.loopMode = 'off';
-                s.queue = [...s.originalList];
+                s.queue = this.generateSection(false);
                 s.currentIndex = startIndex;
             }
             
@@ -166,7 +257,6 @@
             if (s.queue.length === 0 || s.currentIndex < 0) return;
             const song = s.queue[s.currentIndex];
             
-            // ★ 修正: Rust側で付与されたアセットURLを使用して直接再生する
             if (!song || !song.streamUrl) {
                 u.showToast("再生可能なファイルが見つかりません", true);
                 return;
@@ -195,8 +285,12 @@
             if (window.HeaderController) window.HeaderController.updateHeaderUI(song);
             if (window.MainViewController) window.MainViewController.renderMainView(); 
             
-            setTimeout(() => {
-                // TODO: 再生履歴記録用APIの呼び出し（後で実装）
+            setTimeout(async () => {
+                try {
+                    const invoke = window.__TAURI__.core ? window.__TAURI__.core.invoke : window.__TAURI__.tauri.invoke;
+                    await invoke("record_playback", { song: song });
+                } catch(e) { console.error("History record failed:", e); }
+
                 this.pushStateToMini(true);
             }, 10);
         },
@@ -224,34 +318,53 @@
             this.audio.src = ""; 
             this.audio.currentTime = 0;
             s.isPlaying = false;
+            
+            s.queue = [];
+            s.currentIndex = -1;
+
+            const info = document.getElementById('headerPlayerInfo');
+            const ctrl = document.getElementById('headerControls');
+            const logo = document.getElementById('headerLogo');
+            if (info) info.style.display = 'none';
+            if (ctrl) ctrl.style.display = 'none';
+            if (logo) logo.style.display = 'flex';
+
             if (window.HeaderController) window.HeaderController.updatePlayIcons(false);
             if (window.MainViewController) window.MainViewController.renderMainView();
             this.pushStateToMini(true); 
         },
 
         nextSong: function() {
-            if (s.loopMode === 'one' && this.audio) {
+            if (!this.audio) return;
+            if (s.loopMode === 'one') {
                 this.audio.currentTime = 0;
                 this.audio.play();
                 return;
             }
-            if (s.currentIndex < s.queue.length - 1) {
-                s.currentIndex++;
-                this.playCurrentIndex();
-            } else {
+            if (s.currentIndex >= s.queue.length - 1) {
                 if (s.loopMode === 'all') {
-                    if (s.isShuffle) s.queue = u.shuffleArray([...s.originalList]);
+                    s.queue = this.generateSection(s.isShuffle);
                     s.currentIndex = 0;
                     this.playCurrentIndex();
                 } else {
                     this.stopPlayback();
                 }
+            } else {
+                s.currentIndex++;
+                this.playCurrentIndex();
             }
         },
 
         prevSong: function() {
-            if (this.audio && this.audio.currentTime > 3) {
+            if (!this.audio) return;
+            if (this.audio.currentTime > 3) {
                 this.audio.currentTime = 0;
+                this.pushStateToMini(true); 
+                return;
+            }
+            if (s.loopMode === 'one') {
+                this.audio.currentTime = 0;
+                this.pushStateToMini(true);
                 return;
             }
             if (s.currentIndex > 0) {
@@ -259,10 +372,12 @@
                 this.playCurrentIndex();
             } else {
                 if (s.loopMode === 'all') {
+                    s.queue = this.generateSection(s.isShuffle);
                     s.currentIndex = s.queue.length - 1;
                     this.playCurrentIndex();
-                } else if (this.audio) {
+                } else {
                     this.audio.currentTime = 0;
+                    this.pushStateToMini(true);
                 }
             }
         },

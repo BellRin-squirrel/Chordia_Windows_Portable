@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct AppSettings {
     pub items_per_page: i32,
     pub open_player_new_window: bool,
@@ -16,20 +16,20 @@ pub struct AppSettings {
     pub player_visible_tags: Vec<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct TagInfo {
     pub key: String,
     pub label: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct AutocompleteLists {
     pub title: Vec<String>,
     pub artist: Vec<String>,
     pub album: Vec<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct DuplicateSong {
     pub title: String,
     pub artist: String,

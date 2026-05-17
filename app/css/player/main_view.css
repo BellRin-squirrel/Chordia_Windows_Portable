@@ -46,15 +46,44 @@
     overflow: visible; 
 }
 
-.ph-right-info h2 {
-    font-size: 1.8rem; 
+/* ★ 修正: タイトルと検索ボックスのレイアウト */
+.ph-title-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    width: 100%;
     margin-bottom: 12px;
+    gap: 16px;
+}
+
+.ph-title-row h2 {
+    margin: 0;
+    font-size: 1.8rem; 
     color: var(--text-main);
     line-height: 1.2;
     white-space: nowrap; 
     overflow: hidden; 
     text-overflow: ellipsis;
-    width: 100%;
+    flex: 1;
+}
+
+/* ★ 検索ボックスのスタイル */
+.ph-local-search {
+    flex-shrink: 0;
+}
+.ph-local-search input {
+    padding: 6px 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(128, 128, 128, 0.3);
+    background: var(--bg-color);
+    color: var(--text-main);
+    outline: none;
+    font-size: 0.85rem;
+    width: 200px;
+    transition: border-color 0.2s;
+}
+.ph-local-search input:focus {
+    border-color: var(--primary-color);
 }
 
 .ph-meta {
@@ -69,7 +98,6 @@
 }
 .ph-divider { margin: 0 4px; }
 
-/* --- 再生リスト内の 美しいカスタムセレクター --- */
 .ph-sort-container {
     display: flex;
     align-items: center;

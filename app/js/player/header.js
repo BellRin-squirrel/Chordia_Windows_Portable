@@ -11,11 +11,10 @@
             this.btnLoopToggle = document.getElementById('btnLoopToggle');
             this.hdrBtnPlayPause = document.getElementById('hdrBtnPlayPause');
             
-            // カバーアートクリックでミニプレイヤー起動
             const artWrapper = document.querySelector('.hp-art');
             if (artWrapper) {
                 artWrapper.style.cursor = 'pointer';
-                artWrapper.title = '小再生ウィンドウを開く';
+                artWrapper.title = 'ミニプレイヤーを開く';
                 artWrapper.addEventListener('click', () => {
                     this.launchMiniPlayer();
                 });
@@ -43,17 +42,19 @@
             this.updateToggleButtons();
         },
 
-        launchMiniPlayer: function() {
-            const width = 400;
-            const height = 960;
-            const left = window.screen.width - width - 20;
-            const top = 50;
-
-            window.open(
-                'mini_player.html',
-                'ChordiaMiniPlayer',
-                `width=${width},height=${height},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no,resizable=yes,scrollbars=no`
-            );
+        launchMiniPlayer: async function() {
+            try {
+                const invoke = window.__TAURI__.core ? window.__TAURI__.core.invoke : window.__TAURI__.tauri.invoke;
+                await invoke("open_new_window", {
+                    label: "mini_player_window",
+                    url: "mini_player.html",
+                    title: "Mini Player",
+                    width: 320.0,
+                    height: 550.0
+                });
+            } catch(e) {
+                console.error("Mini Player Launch Error:", e);
+            }
         },
 
         initModalTabs: function() {
@@ -74,14 +75,14 @@
             });
         },
 
-        openQueueLyricsModal: async function() {
+        // ★ 修正: 表示するタブを指定できるように引数を追加
+        openQueueLyricsModal: async function(targetTab = 'tab-nextup') {
             const modal = document.getElementById('queueLyricsModal');
             if (!modal) return;
 
             const currentSong = s.queue[s.currentIndex];
             if (!currentSong) return;
 
-            // 0. モーダルヘッダーの情報を更新 (曲の情報モーダルと同様)
             document.getElementById('qlModalArt').src = currentSong.imageData || s.DEFAULT_ICON;
             document.getElementById('qlModalTitle').textContent = currentSong.title || "Unknown Title";
             document.getElementById('qlModalArtist').textContent = currentSong.artist || "Unknown Artist";
@@ -91,10 +92,13 @@
                 albumEl.style.display = currentSong.album ? "block" : "none";
             }
 
-            // 1. キューの表示
             const queueList = document.getElementById('modalQueueList');
             queueList.innerHTML = '';
-            const nextSongsRaw = s.queue.slice(s.currentIndex + 1, s.currentIndex + 52);
+            
+            let nextSongsRaw = [];
+            if (s.loopMode !== 'one') {
+                nextSongsRaw = s.queue.slice(s.currentIndex + 1, s.currentIndex + 52);
+            }
 
             if (nextSongsRaw.length > 0) {
                 const displaySongs = nextSongsRaw.slice(0, 50);
@@ -125,15 +129,14 @@
                 queueList.innerHTML = '<div class="no-lyrics">次に再生される曲はありません</div>';
             }
 
-            // 2. 歌詞の表示
             const lyricsView = document.getElementById('modalLyricsView');
             lyricsView.textContent = currentSong.lyric || "歌詞情報はありません。";
 
-            // 3. 履歴の取得と表示 (New!)
             const historyList = document.getElementById('modalHistoryList');
             historyList.innerHTML = '<div class="no-lyrics">履歴を読み込み中...</div>';
             try {
-                const historyData = await eel.get_playback_history()();
+                const invoke = window.__TAURI__.core ? window.__TAURI__.core.invoke : window.__TAURI__.tauri.invoke;
+                const historyData = await invoke("get_playback_history");
                 historyList.innerHTML = '';
                 if (historyData && historyData.length > 0) {
                     historyData.forEach(h => {
@@ -157,8 +160,10 @@
                 historyList.innerHTML = '<div class="no-lyrics">履歴の取得に失敗しました</div>';
             }
 
-            // タブを「次に再生」にリセット
-            modal.querySelector('.tab-btn[data-target="tab-nextup"]').click();
+            // 指定されたタブを開く
+            const tabBtn = modal.querySelector(`.tab-btn[data-target="${targetTab}"]`);
+            if (tabBtn) tabBtn.click();
+            
             modal.classList.add('show');
         },
 

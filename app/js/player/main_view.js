@@ -29,6 +29,12 @@
                 });
             });
 
+            // ★ 検索ボックスのイベント登録
+            const searchBox = document.getElementById('playlistLocalSearch');
+            if (searchBox) {
+                searchBox.addEventListener('input', () => this.renderMainView());
+            }
+
             this.initInfoModal();
             this.initTrackMenuEvents();
             this.initSmartRemoveModal();
@@ -110,9 +116,6 @@
             modal.classList.add('show');
         },
 
-        // ==========================================
-        // ★ ここに時間計測 (console.time) を仕込みました
-        // ==========================================
         selectPlaylist: async function(index) {
             if (index === -1 || !s.playlists[index]) return;
 
@@ -122,14 +125,15 @@
             this.clearSelection(); 
             window.SidebarController.renderSidebar(); 
 
+            // 検索ボックスをリセット
+            const searchBox = document.getElementById('playlistLocalSearch');
+            if (searchBox) searchBox.value = '';
+
             const pl = s.playlists[index];
             const invoke = window.__TAURI__.core ? window.__TAURI__.core.invoke : window.__TAURI__.tauri.invoke;
 
             try {
-                console.time("[計測] 1. Rust からデータを取得 (get_playlist_details)");
                 const details = await invoke("get_playlist_details", { plId: pl.id });
-                console.timeEnd("[計測] 1. Rust からデータを取得 (get_playlist_details)");
-
                 if (details) {
                     s.playlists[index] = details; 
                 }
@@ -137,9 +141,7 @@
                 console.error(e);
             }
 
-            console.time("[計測] 2. 画面の描画処理全体 (renderMainView)");
-            await this.renderMainView(); // renderMainViewの終了を待つ
-            console.timeEnd("[計測] 2. 画面の描画処理全体 (renderMainView)");
+            await this.renderMainView();
         },
 
         clearSelection: function() {
@@ -365,10 +367,23 @@
             const invoke = window.__TAURI__.core ? window.__TAURI__.core.invoke : window.__TAURI__.tauri.invoke;
             if (!this.playerSettings) this.playerSettings = await invoke("get_app_settings");
 
-            console.time("[計測] 2-1. ソートと初期設定");
             const plData = target;
             const isDesc = plData.sortDesc === true;
-            const songs = u.sortSongs(plData.songs, plData.sortBy, isDesc);
+            const sortedSongs = u.sortSongs(plData.songs, plData.sortBy, isDesc);
+            
+            // ★ ローカル検索フィルタリング
+            const searchInput = document.getElementById('playlistLocalSearch');
+            const query = searchInput ? searchInput.value.trim().toLowerCase() : "";
+            
+            let songs = sortedSongs;
+            if (query) {
+                songs = sortedSongs.filter(song => {
+                    return ['title', 'artist', 'album', 'genre', 'year', 'composer', 'comment'].some(key => {
+                        return song[key] && String(song[key]).toLowerCase().includes(query);
+                    });
+                });
+            }
+
             const visibleTags = this.playerSettings.player_visible_tags || ['title', 'artist', 'album'];
             
             document.getElementById('currentPlaylistTitle').textContent = plData.playlistName;
@@ -382,7 +397,14 @@
                 }
             });
             document.getElementById('currentPlaylistDuration').textContent = u.formatTotalDuration(totalSec);
-            console.timeEnd("[計測] 2-1. ソートと初期設定");
+
+            // カバーアート
+            const cover = document.getElementById('playlistCoverArt');
+            if (cover) {
+                cover.removeAttribute('src');
+                const targetImg = (songs.length > 0 && songs[0].imageData) ? songs[0].imageData : s.DEFAULT_ICON;
+                cover.src = targetImg;
+            }
 
             const sortArea = document.getElementById('phSortArea');
             if (sortArea) {
@@ -391,6 +413,7 @@
                 if (!isVirtual) {
                     let btnEdit = document.createElement('button');
                     btnEdit.className = 'btn-edit-rules';
+                    btnEdit.id = 'btnEditRules';
                     btnEdit.textContent = 'ルールを編集';
                     btnEdit.style.display = (plData.type === 'smart') ? 'inline-block' : 'none';
                     btnEdit.onclick = () => window.SidebarController.openSmartPlaylistModal(plData);
@@ -408,6 +431,9 @@
                 const sortKeySelector = this.createCustomSelector('sortKey', sortOptions, plData.sortBy, async (val) => {
                     plData.sortBy = val;
                     if (!isVirtual) await invoke("update_playlist_by_id", { plId: plData.id, field: 'sortBy', value: val });
+                    if (window.PlayerController && window.PlayerController.handleSortChanged) {
+                        window.PlayerController.handleSortChanged(plData.songs, plData.sortBy, plData.sortDesc);
+                    }
                     this.renderMainView();
                 });
                 sortArea.appendChild(sortKeySelector);
@@ -418,6 +444,9 @@
                     const isDescending = (val === 'desc');
                     plData.sortDesc = isDescending;
                     if (!isVirtual) await invoke("update_playlist_by_id", { plId: plData.id, field: 'sortDesc', value: isDescending });
+                    if (window.PlayerController && window.PlayerController.handleSortChanged) {
+                        window.PlayerController.handleSortChanged(plData.songs, plData.sortBy, plData.sortDesc);
+                    }
                     this.renderMainView();
                 });
                 sortArea.appendChild(orderSelector);
@@ -427,10 +456,7 @@
             const tbody = document.getElementById('songListBody');
             if (!tbody) return;
             
-            console.time("[計測] 2-2. DOMの構築 (Fragment使用)");
             tbody.innerHTML = '';
-            
-            // ★ 修正: 画面の描画を圧倒的に早くするため DocumentFragment を使用
             const fragment = document.createDocumentFragment();
             
             songs.forEach((song, idx) => {
@@ -468,9 +494,7 @@
                 fragment.appendChild(tr);
             });
             
-            // 全ての行を一気にテーブルへ追加する
             tbody.appendChild(fragment);
-            console.timeEnd("[計測] 2-2. DOMの構築 (Fragment使用)");
         },
 
         playTrackAtIndex: function(idx) {

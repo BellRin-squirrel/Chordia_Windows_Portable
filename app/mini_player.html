@@ -6,6 +6,7 @@
     <link rel="icon" href="icon/Chordia.ico">
     <link rel="stylesheet" href="css/style.css">
     <style>
+        /* ★ ウィンドウ全体をドラッグ可能にし、背景を少し丸める */
         body {
             margin: 0; padding: 0;
             background-color: var(--bg-color);
@@ -14,213 +15,202 @@
             overflow: hidden;
             display: flex; flex-direction: column;
             user-select: none;
+            border-radius: 16px; 
+            -webkit-app-region: drag; /* ドラッグ移動可能 */
+            border: 1px solid rgba(128, 128, 128, 0.2);
+            box-sizing: border-box;
         }
+
+        /* ★ ボタンやスクロール部分はドラッグを無効化（クリック可能にする） */
+        button, input, .large-content {
+            -webkit-app-region: no-drag;
+        }
+
+        /* --- モード共通レイアウト --- */
         .mini-container {
             display: flex; flex-direction: column;
             height: 100%; width: 100%;
-            padding: 4vh 5vw; 
+            padding: 2vh 4vw 4vh 4vw; 
             box-sizing: border-box;
-        }
-        #view-default {
-            display: flex; flex-direction: column;
-            height: 100%; width: 100%;
-            min-height: 0;
+            position: relative;
         }
 
-        .art-wrapper {
-            width: 100%;
+        /* --- トップバー（左上・右上のボタン配置） --- */
+        .top-bar {
             display: flex;
-            justify-content: center;
-            margin-bottom: 3vh;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            margin-bottom: 2vh;
             flex-shrink: 0;
+        }
+
+        .btn-circle-mac {
+            width: 16px; height: 16px;
+            border-radius: 50%;
+            border: none; cursor: pointer;
+            display: flex; justify-content: center; align-items: center;
+            color: transparent; /* 通常時はアイコンを隠す */
+            transition: all 0.2s;
+            padding: 0;
+        }
+        .btn-circle-mac svg { width: 10px; height: 10px; font-weight: bold; }
+        .btn-circle-mac:hover { color: rgba(255,255,255,0.9); transform: scale(1.1); }
+        .btn-circle-mac:active { filter: brightness(0.8); }
+
+        .btn-green { background-color: #28c840; } /* 三本線 */
+        .btn-red { background-color: #ff5e56; }   /* 閉じる */
+
+        /* --- アートワーク (正方形キープ) --- */
+        .art-wrapper {
+            width: 100%; display: flex; justify-content: center;
+            margin-bottom: 2vh; flex-shrink: 0; position: relative;
         }
 
         #art {
-            width: 80%;
-            max-height: 45vh; 
-            aspect-ratio: 1/1;
-            object-fit: cover;
-            border-radius: 3vw; 
-            box-shadow: 0 1vh 3vh rgba(0,0,0,0.2);
-            display: block;
-        }
-        
-        .info-area { 
-            text-align: center; 
-            margin-bottom: 2vh; 
-            flex-shrink: 0;
-        }
-        .info-title { 
-            font-weight: 800; 
-            font-size: clamp(1rem, 5vw, 1.5rem); 
-            white-space: nowrap; 
-            overflow: hidden; 
-            text-overflow: ellipsis; 
-            margin-bottom: 0.5vh; 
-        }
-        .info-artist { 
-            color: var(--text-sub); 
-            font-size: clamp(0.8rem, 4vw, 1.1rem); 
-            white-space: nowrap; 
-            overflow: hidden; 
-            text-overflow: ellipsis; 
+            width: 80%; /* 幅を変えると、それに合わせて高さも変わる */
+            aspect-ratio: 1 / 1; /* ★ 常に正方形 */
+            object-fit: cover; border-radius: 3vw; 
+            box-shadow: 0 1vh 3vh rgba(0,0,0,0.2); display: block;
+            transition: all 0.3s;
         }
 
-        .ctrl-area { 
-            display: flex; 
-            justify-content: center; 
-            align-items: center; 
-            gap: 6vw; 
-            margin-bottom: 3vh; 
+        /* --- 情報・コントロール --- */
+        .info-area { text-align: center; margin-bottom: 2vh; flex-shrink: 0; }
+        .info-title { font-weight: 800; font-size: clamp(1rem, 5vw, 1.3rem); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 0.5vh; }
+        .info-artist { color: var(--text-sub); font-size: clamp(0.8rem, 4vw, 1rem); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .info-album { color: var(--text-sub); font-size: clamp(0.75rem, 3.5vw, 0.9rem); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0.7; margin-top: 2px;}
+
+        .ctrl-area { display: flex; justify-content: center; align-items: center; gap: 6vw; margin-bottom: 2vh; flex-shrink: 0; }
+        .btn-ctrl { background: none; border: none; color: var(--text-main); cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; transition: transform 0.1s;}
+        .btn-ctrl:active { transform: scale(0.9); }
+        .btn-ctrl svg { width: clamp(24px, 8vw, 40px); height: clamp(24px, 8vw, 40px); fill: currentColor; }
+        .btn-ctrl.playpause { width: clamp(50px, 15vw, 80px); height: clamp(50px, 15vw, 80px); background: var(--primary-color); color: white; border-radius: 50%; box-shadow: 0 0.5vh 1.5vh rgba(0,0,0,0.1); }
+        .btn-ctrl.playpause svg { width: 50%; height: 50%; }
+
+        .seek-area { margin-bottom: 2vh; flex-shrink: 0; }
+        .seek-bar { -webkit-appearance: none; width: 100%; height: 6px; border-radius: 3px; background: rgba(128,128,128,0.2); outline: none; cursor: pointer; }
+        .seek-bar::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: var(--primary-color); box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
+
+        /* --- Largeモード用 --- */
+        .large-area {
+            flex: 1; min-height: 0; display: flex; flex-direction: column;
+            background: rgba(128,128,128,0.05); border-radius: 12px; overflow: hidden;
+        }
+        .large-tabs {
+            display: flex; background: rgba(128, 128, 128, 0.05); border-bottom: 1px solid rgba(128,128,128,0.1);
             flex-shrink: 0;
         }
-        .btn-ctrl { 
-            background: none; 
-            border: none; 
-            color: var(--text-main); 
-            cursor: pointer; 
-            display: flex; 
-            align-items: center; 
-            justify-content: center;
-            padding: 0;
+        .large-tabs button {
+            flex: 1; padding: 1vh 0; border: none; background: none; font-size: clamp(0.7rem, 3.5vw, 0.9rem);
+            font-weight: 700; color: var(--text-sub); cursor: pointer; transition: all 0.2s;
         }
-        .btn-ctrl svg { 
-            width: clamp(24px, 8vw, 40px); 
-            height: clamp(24px, 8vw, 40px); 
-            fill: currentColor; 
-        }
-        .btn-ctrl.playpause { 
-            width: clamp(50px, 15vw, 80px); 
-            height: clamp(50px, 15vw, 80px); 
-            background: var(--primary-color); 
-            color: white; 
-            border-radius: 50%; 
-            box-shadow: 0 0.5vh 1.5vh rgba(0,0,0,0.1);
-        }
-        .btn-ctrl.playpause svg { 
-            width: 50%; 
-            height: 50%; 
-        }
+        .large-tabs button.active { color: var(--primary-color); border-bottom: 2px solid var(--primary-color); }
+        .large-content { flex: 1; overflow-y: auto; padding: 1.5vh 3vw; }
+        .large-pane { display: none; }
+        .large-pane.active { display: block; }
+        .large-content::-webkit-scrollbar { width: 4px; }
+        .large-content::-webkit-scrollbar-thumb { background: rgba(128,128,128,0.2); border-radius: 4px; }
 
-        .seek-area { 
-            margin-bottom: 3vh; 
-            flex-shrink: 0;
-        }
-        .seek-bar { 
-            -webkit-appearance: none; 
-            width: 100%; 
-            height: 6px; 
-            border-radius: 3px; 
-            background: rgba(128,128,128,0.2); 
-            outline: none; 
-            cursor: pointer; 
-        }
-        .seek-bar::-webkit-slider-thumb { 
-            -webkit-appearance: none; 
-            width: 14px; 
-            height: 14px; 
-            border-radius: 50%; 
-            background: var(--primary-color); 
-            box-shadow: 0 1px 3px rgba(0,0,0,0.3); 
-        }
-
-        .queue-area {
-            flex: 1; 
-            min-height: 0; 
-            background: rgba(128,128,128,0.05);
-            border-radius: 12px; 
-            padding: 1.5vh 3vw; 
-            overflow-y: auto;
-        }
-        .queue-title-text { 
-            font-size: clamp(0.7rem, 3vw, 0.9rem); 
-            font-weight: 700; 
-            color: var(--text-sub); 
-            margin-bottom: 1vh; 
-            text-transform: uppercase; 
-            letter-spacing: 0.05em; 
-        }
-        
-        /* ★ 追加・修正: キューアイテムのレイアウト */
-        .queue-item { 
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 1vh 0; 
-            border-bottom: 1px solid rgba(128,128,128,0.1); 
-        }
+        .queue-item { display: flex; align-items: center; gap: 12px; padding: 1vh 0; border-bottom: 1px solid rgba(128,128,128,0.1); }
         .queue-item:last-child { border-bottom: none; }
-        .queue-art {
-            width: clamp(32px, 8vw, 40px);
-            height: clamp(32px, 8vw, 40px);
-            border-radius: 4px;
-            object-fit: cover;
-            flex-shrink: 0;
+        .queue-art { width: clamp(32px, 8vw, 40px); height: clamp(32px, 8vw, 40px); border-radius: 4px; object-fit: cover; flex-shrink: 0; }
+        .queue-info { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; }
+        .queue-title { font-size: clamp(0.85rem, 3.5vw, 1rem); font-weight: 700; color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .queue-artist { font-size: clamp(0.75rem, 3vw, 0.85rem); color: var(--text-sub); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .lyric-text { white-space: pre-wrap; font-size: 0.9rem; line-height: 1.6; color: var(--text-main); text-align: center;}
+        
+        /* --- Smallモード (画像のみ) --- */
+        body.mode-small { border-radius: 12px; border: none; }
+        body.mode-small .mini-container { padding: 0; }
+        body.mode-small .top-bar { display: none; } /* 上部バーを隠す */
+        body.mode-small .art-wrapper { margin: 0; height: 100vh; }
+        body.mode-small #art { width: 100%; max-height: none; border-radius: 0; box-shadow: none; border-radius: 12px; }
+        body.mode-small .info-area, body.mode-small .ctrl-area, body.mode-small .seek-area, body.mode-small .large-area { display: none; }
+        
+        /* Smallモード専用のオーバーレイボタン */
+        .small-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5); display: flex; justify-content: space-between; align-items: flex-start;
+            padding: 10px; box-sizing: border-box; opacity: 0; transition: opacity 0.2s;
+            border-radius: 12px;
         }
-        .queue-info {
-            flex: 1;
-            min-width: 0;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-        }
-        .queue-title {
-            font-size: clamp(0.85rem, 3.5vw, 1rem); 
-            font-weight: 700;
-            color: var(--text-main);
-            white-space: nowrap; 
-            overflow: hidden; 
-            text-overflow: ellipsis; 
-            margin-bottom: 2px;
-        }
-        .queue-artist {
-            font-size: clamp(0.75rem, 3vw, 0.85rem); 
-            color: var(--text-sub);
-            white-space: nowrap; 
-            overflow: hidden; 
-            text-overflow: ellipsis; 
-        }
-        .queue-more { 
-            font-size: clamp(0.7rem, 3vw, 0.85rem); 
-            color: var(--text-sub); 
-            text-align: center; 
-            padding: 1.5vh 0; 
-            font-style: italic; 
-            opacity: 0.7;
-        }
+        body.mode-small .art-wrapper:hover .small-overlay { opacity: 1; }
 
-        .queue-area::-webkit-scrollbar { width: 4px; }
-        .queue-area::-webkit-scrollbar-thumb { background: rgba(128,128,128,0.2); border-radius: 4px; }
+        /* --- 表示モード切り替え --- */
+        body.mode-medium .large-area { display: none; }
+        body.mode-large #album { display: none; }
+
+        .no-data { text-align: center; color: var(--text-sub); font-size: 0.85rem; padding: 20px 0; }
     </style>
-    <script src="js/theme_head.js"></script>
 </head>
-<body>
+<body class="mode-medium">
     <div class="mini-container">
-        <div id="view-default">
-            <div class="art-wrapper">
-                <img id="art" src="icon/Chordia.png">
-            </div>
-            <div class="info-area">
-                <div id="title" class="info-title">Title</div>
-                <div id="artist" class="info-artist">Artist</div>
-            </div>
-            <div class="ctrl-area">
-                <button class="btn-ctrl" id="prev">
-                    <svg viewBox="0 0 24 24"><path d="M9.195 18.44c1.25.713 2.805-.19 2.805-1.629v-2.34l6.945 3.968c1.25.714 2.805-.188 2.805-1.628V8.688c0-1.44-1.555-2.342-2.805-1.628L12 11.03v-2.34c0-1.44-1.555-2.343-2.805-1.629l-7.108 4.062c-1.26.72-1.26 2.536 0 3.256l7.108 4.061z"/></svg>
+        
+        <!-- Large/Medium用のトップバー -->
+        <div class="top-bar">
+            <!-- 左上: モード変更 (三本線) -->
+            <button id="btnSwitchMode" class="btn-circle-mac btn-green tick-btn" title="表示切り替え">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" /></svg>
+            </button>
+            <!-- 右上: 閉じる -->
+            <button id="btnClosePlayer" class="btn-circle-mac btn-red tick-btn" title="閉じる">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+        </div>
+
+        <div class="art-wrapper">
+            <img id="art" src="icon/Chordia.png">
+            <!-- Smallモード専用のオーバーレイ -->
+            <div class="small-overlay">
+                <button id="btnSwitchModeSmall" class="btn-circle-mac btn-green tick-btn" title="表示切り替え">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" /></svg>
                 </button>
-                <button class="btn-ctrl playpause" id="playpause"></button>
-                <button class="btn-ctrl" id="next">
-                    <svg viewBox="0 0 24 24"><path d="M5.055 7.06c-1.25-.714-2.805.189-2.805 1.628v8.123c0 1.44 1.555 2.342 2.805 1.628L12 14.471v2.34c0 1.44 1.555 2.342 2.805 1.628l7.108-4.061c1.26-.72 1.26-2.536 0-3.256l-7.108-4.062c-1.25-.713-2.805.19-2.805 1.629v2.34l-6.945-3.968Z"/></svg>
+                <button id="btnCloseSmall" class="btn-circle-mac btn-red tick-btn" title="閉じる">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
-            </div>
-            <div class="seek-area">
-                <input type="range" id="seek" class="seek-bar" min="0" max="1000" value="0">
-            </div>
-            <div class="queue-area">
-                <div class="queue-title-text">次に再生</div>
-                <div id="queue-list"></div>
             </div>
         </div>
+
+        <div class="info-area">
+            <div id="title" class="info-title">Title</div>
+            <div id="artist" class="info-artist">Artist</div>
+            <div id="album" class="info-album"></div>
+        </div>
+        
+        <div class="ctrl-area">
+            <button class="btn-ctrl" id="prev">
+                <svg viewBox="0 0 24 24"><path d="M9.195 18.44c1.25.713 2.805-.19 2.805-1.629v-2.34l6.945 3.968c1.25.714 2.805-.188 2.805-1.628V8.688c0-1.44-1.555-2.342-2.805-1.628L12 11.03v-2.34c0-1.44-1.555-2.343-2.805-1.629l-7.108 4.062c-1.26.72-1.26 2.536 0 3.256l7.108 4.061z"/></svg>
+            </button>
+            <button class="btn-ctrl playpause" id="playpause"></button>
+            <button class="btn-ctrl" id="next">
+                <svg viewBox="0 0 24 24"><path d="M5.055 7.06c-1.25-.714-2.805.189-2.805 1.628v8.123c0 1.44 1.555 2.342 2.805 1.628L12 14.471v2.34c0 1.44 1.555 2.342 2.805 1.628l7.108-4.061c1.26-.72 1.26-2.536 0-3.256l-7.108-4.062c-1.25-.713-2.805.19-2.805 1.629v2.34l-6.945-3.968Z"/></svg>
+            </button>
+        </div>
+        
+        <div class="seek-area">
+            <input type="range" id="seek" class="seek-bar" min="0" max="1000" value="0">
+        </div>
+
+        <div class="large-area">
+            <div class="large-tabs">
+                <button class="tab-btn active" data-target="pane-queue">次に再生</button>
+                <button class="tab-btn" data-target="pane-lyric">歌詞</button>
+                <button class="tab-btn" data-target="pane-history">履歴</button>
+            </div>
+            <div class="large-content">
+                <div id="pane-queue" class="large-pane active">
+                    <div id="queue-list"></div>
+                </div>
+                <div id="pane-lyric" class="large-pane">
+                    <div id="lyric-text" class="lyric-text"></div>
+                </div>
+                <div id="pane-history" class="large-pane">
+                    <div id="history-list"></div>
+                </div>
+            </div>
+        </div>
+
     </div>
 
     <script src="js/player/mini_player.js"></script>

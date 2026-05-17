@@ -13,16 +13,24 @@ pub fn get_base_dir() -> PathBuf {
     path
 }
 
-// Base64の代わりにTauriのローカルファイルURLを生成する
 pub fn get_asset_url(rel_path: &str) -> String {
     if rel_path.is_empty() { return "".to_string(); }
     let path = get_base_dir().join(rel_path);
     if !path.exists() { return "".to_string(); }
-    
-    // 絶対パスを取得し、URLエンコードしてTauriのアセットURLにする
     let abs_path = path.to_string_lossy().to_string();
     let encoded = urlencoding::encode(&abs_path);
     format!("http://asset.localhost/{}", encoded)
+}
+
+pub fn get_image_base64(rel_path: &str) -> String {
+    if rel_path.is_empty() { return "".to_string(); }
+    let path = get_base_dir().join(rel_path);
+    if !path.exists() { return "".to_string(); }
+    if let Ok(bytes) = fs::read(&path) {
+        use base64::{Engine as _, engine::general_purpose};
+        return format!("data:image/png;base64,{}", general_purpose::STANDARD.encode(&bytes));
+    }
+    "".to_string()
 }
 
 pub fn load_db() -> Vec<serde_json::Map<String, Value>> {
@@ -31,19 +39,12 @@ pub fn load_db() -> Vec<serde_json::Map<String, Value>> {
     if !path.exists() { return Vec::new(); }
     let data = fs::read_to_string(&path).unwrap_or_default();
     let mut db: Vec<serde_json::Map<String, Value>> = serde_json::from_str(&data).unwrap_or_else(|_| Vec::new());
-    
-    // 画像や音楽のBase64変換をやめ、一瞬で終わるURL生成だけにする
     for item in db.iter_mut() {
-        let dur = get_duration_str(item.get("musicFilename"));
-        item.insert("duration".to_string(), Value::String(dur));
-        
+        item.insert("duration".to_string(), Value::String(get_duration_str(item.get("musicFilename"))));
         let img_path = item.get("imageFilename").and_then(|v| v.as_str()).unwrap_or("");
-        let asset_img_url = get_asset_url(img_path);
-        item.insert("imageData".to_string(), Value::String(asset_img_url));
-
+        item.insert("imageData".to_string(), Value::String(get_asset_url(img_path)));
         let music_path = item.get("musicFilename").and_then(|v| v.as_str()).unwrap_or("");
-        let asset_music_url = get_asset_url(music_path);
-        item.insert("streamUrl".to_string(), Value::String(asset_music_url));
+        item.insert("streamUrl".to_string(), Value::String(get_asset_url(music_path)));
     }
     db
 }
@@ -51,9 +52,7 @@ pub fn load_db() -> Vec<serde_json::Map<String, Value>> {
 pub fn save_db(db: &Vec<serde_json::Map<String, Value>>) -> Result<(), String> {
     let mut db_to_save = db.clone();
     for item in db_to_save.iter_mut() {
-        item.remove("duration");
-        item.remove("imageData");
-        item.remove("streamUrl");
+        item.remove("duration"); item.remove("imageData"); item.remove("streamUrl");
     }
     let path = get_base_dir().join("userfiles/music.json");
     let data = serde_json::to_string_pretty(&db_to_save).map_err(|e| e.to_string())?;
@@ -61,25 +60,17 @@ pub fn save_db(db: &Vec<serde_json::Map<String, Value>>) -> Result<(), String> {
 }
 
 pub fn load_playlists_master() -> Vec<Value> {
-    let base = get_base_dir();
-    let path = base.join("userfiles/playlist.json");
+    let path = get_base_dir().join("userfiles/playlist.json");
     if !path.exists() { return Vec::new(); }
-    if let Ok(data) = fs::read_to_string(&path) {
-        if let Ok(val) = serde_json::from_str::<Vec<Value>>(&data) {
-            return val;
-        }
-    }
-    Vec::new()
+    fs::read_to_string(&path).ok().and_then(|d| serde_json::from_str(&d).ok()).unwrap_or_default()
 }
 
 pub fn save_playlists_master(playlists: &[Value]) {
     let path = get_base_dir().join("userfiles/playlist.json");
-    if let Ok(data) = serde_json::to_string_pretty(playlists) {
-        let _ = fs::write(path, data);
-    }
+    if let Ok(data) = serde_json::to_string_pretty(playlists) { let _ = fs::write(path, data); }
 }
 
-pub fn force_save_as_png(image_bytes: &[u8], target_path: &PathBuf) -> bool {
+pub fn force_save_as_png(image_bytes: &[u8], target_path: &std::path::PathBuf) -> bool {
     if let Ok(img) = load_from_memory(image_bytes) {
         let mut final_img = img;
         if final_img.color().has_alpha() {
@@ -131,7 +122,6 @@ pub fn evaluate_smart_rules(song: &serde_json::Map<String, Value>, rule: &Value)
                     else if v.is_number() { Some(v.to_string()) }
                     else { None }
                 }).unwrap_or_default();
-
                 if ["track", "year", "disc", "bpm"].contains(&tag) {
                     let s_num: f64 = song_val.parse().unwrap_or(0.0);
                     if op == "range" {
@@ -146,18 +136,11 @@ pub fn evaluate_smart_rules(song: &serde_json::Map<String, Value>, rule: &Value)
                         let v_num: f64 = if target_val.is_number() { target_val.as_f64().unwrap_or(0.0) } 
                                          else if target_val.is_string() { target_val.as_str().unwrap().parse().unwrap_or(0.0) }
                                          else { 0.0 };
-                        return match op {
-                            "equals" => s_num == v_num, "not_equals" => s_num != v_num,
-                            "greater" => s_num > v_num, "less" => s_num < v_num, _ => false,
-                        };
+                        return match op { "equals" => s_num == v_num, "not_equals" => s_num != v_num, "greater" => s_num > v_num, "less" => s_num < v_num, _ => false };
                     }
                 } else {
                     let target_str = if target_val.is_string() { target_val.as_str().unwrap().to_lowercase() } else { target_val.to_string() };
-                    return match op {
-                        "contains" => song_val.contains(&target_str), "not_contains" => !song_val.contains(&target_str),
-                        "equals" => song_val == target_str, "not_equals" => song_val != target_str,
-                        "startswith" => song_val.starts_with(&target_str), "endswith" => song_val.ends_with(&target_str), _ => false,
-                    };
+                    return match op { "contains" => song_val.contains(&target_str), "not_contains" => !song_val.contains(&target_str), "equals" => song_val == target_str, "not_equals" => song_val != target_str, "startswith" => song_val.starts_with(&target_str), "endswith" => song_val.ends_with(&target_str), _ => false };
                 }
             }
         }

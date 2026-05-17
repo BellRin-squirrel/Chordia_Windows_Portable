@@ -2,7 +2,12 @@
 
 mod types;
 mod utils;
-mod commands;
+mod cmd_window;
+mod cmd_settings;
+mod cmd_add_music;
+mod cmd_playlist;
+mod cmd_library;
+mod cmd_history;
 
 use std::sync::Mutex;
 use tauri::Manager;
@@ -23,61 +28,64 @@ fn main() {
             playlists: Mutex::new(initial_playlists),
         })
         .setup(|app| {
-            app.get_webview_window("main").unwrap();
+            let _window = app.get_webview_window("main").unwrap();
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            // --- 全般 ---
-            commands::open_new_window,
-            commands::get_app_settings,
-            commands::save_app_settings,
-            commands::get_custom_themes,
-            commands::save_custom_theme,
-            commands::delete_custom_theme,
+            cmd_window::open_new_window,
+            cmd_window::set_mini_player_mode,
+            cmd_window::close_mini_player,
+            cmd_window::make_window_square,
             
-            // --- 追加・アートワーク ---
-            commands::get_default_art_url,
-            commands::update_default_artwork,
-            commands::reset_default_artwork,
-            commands::get_available_tags,
-            commands::get_autocomplete_lists,
-            commands::check_duplicate_songs,
-            commands::save_music_data, // ★追加
-            commands::download_and_save_music,
-            commands::check_tools_status,
-            commands::fetch_video_info,
-            commands::fetch_youtube_playlist,
-            commands::fetch_and_crop_thumbnail,
-            commands::fetch_and_crop_image_url,
-            commands::extract_artwork_from_local_file,
-            commands::download_original_thumbnail,
-            commands::search_lyrics_online,
+            cmd_settings::get_app_settings,
+            cmd_settings::save_app_settings,
+            cmd_settings::get_custom_themes,
+            cmd_settings::save_custom_theme,
+            cmd_settings::delete_custom_theme,
             
-            // --- プレイリスト関連 ---
-            commands::get_playlist_summaries,
-            commands::get_playlist_details,
-            commands::get_album_list,
-            commands::get_artist_list,
-            commands::get_virtual_playlist_details,
-            commands::create_playlist,
-            commands::update_playlist_by_id,
-            commands::delete_playlist_by_id,
-            commands::duplicate_playlist_by_id,
-            commands::add_songs_to_playlist,
-            commands::remove_songs_from_playlist,
-            commands::create_smart_playlist,
-            commands::update_smart_playlist,
-            commands::convert_smart_to_normal_and_remove_songs,
+            cmd_add_music::get_default_art_url,
+            cmd_add_music::update_default_artwork,
+            cmd_add_music::reset_default_artwork,
+            cmd_add_music::get_available_tags,
+            cmd_add_music::get_autocomplete_lists,
+            cmd_add_music::check_duplicate_songs,
+            cmd_add_music::save_music_data,
+            cmd_add_music::download_and_save_music,
+            cmd_add_music::check_tools_status,
+            cmd_add_music::fetch_video_info,
+            cmd_add_music::fetch_youtube_playlist,
+            cmd_add_music::fetch_and_crop_thumbnail,
+            cmd_add_music::fetch_and_crop_image_url,
+            cmd_add_music::extract_artwork_from_local_file,
+            cmd_add_music::download_original_thumbnail,
+            cmd_add_music::search_lyrics_online,
+
+            cmd_playlist::get_playlist_summaries,
+            cmd_playlist::get_playlist_details,
+            cmd_playlist::get_album_list,
+            cmd_playlist::get_artist_list,
+            cmd_playlist::get_virtual_playlist_details,
+            cmd_playlist::create_playlist,
+            cmd_playlist::update_playlist_by_id,
+            cmd_playlist::delete_playlist_by_id,
+            cmd_playlist::duplicate_playlist_by_id,
+            cmd_playlist::add_songs_to_playlist,
+            cmd_playlist::remove_songs_from_playlist,
+            cmd_playlist::create_smart_playlist,
+            cmd_playlist::update_smart_playlist,
+            cmd_playlist::convert_smart_to_normal_and_remove_songs,
             
-            // --- 管理画面系 ---
-            commands::get_library_count,
-            commands::get_library_chunk,
-            commands::update_song_by_id,
-            commands::update_song_artwork_by_id,
-            commands::delete_song_by_id,
-            commands::get_common_values_for_selected,
-            commands::update_multiple_songs,
-            commands::delete_multiple_songs
+            cmd_library::get_library_count,
+            cmd_library::get_library_chunk,
+            cmd_library::update_song_by_id,
+            cmd_library::update_song_artwork_by_id,
+            cmd_library::delete_song_by_id,
+            cmd_library::get_common_values_for_selected,
+            cmd_library::update_multiple_songs,
+            cmd_library::delete_multiple_songs,
+            
+            cmd_history::record_playback,
+            cmd_history::get_playback_history,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -8,17 +8,68 @@ use base64::{Engine as _, engine::general_purpose};
 use std::collections::HashSet;
 use std::os::windows::process::CommandExt;
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder, State};
+use chrono::Local;
 
 use crate::AppState;
 use crate::types::*;
 use crate::utils::*;
 
+// ==========================================
+// ウィンドウ管理
+// ==========================================
+
 #[tauri::command]
 pub async fn open_new_window(app: AppHandle, label: String, url: String, title: String, width: f64, height: f64) -> Result<(), String> {
-    if let Some(window) = app.get_webview_window(&label) { let _ = window.set_focus(); return Ok(()); }
-    WebviewWindowBuilder::new(&app, label, WebviewUrl::App(url.into())).title(title).inner_size(width, height).resizable(true).build().map_err(|e| e.to_string())?;
+    if let Some(window) = app.get_webview_window(&label) { 
+        let _ = window.set_focus(); 
+        return Ok(()); 
+    }
+    
+    let mut builder = WebviewWindowBuilder::new(&app, label.clone(), WebviewUrl::App(url.into()))
+        .title(title)
+        .inner_size(width, height)
+        .resizable(true);
+
+    if label == "mini_player_window" {
+        builder = builder.decorations(false).transparent(true);
+    }
+
+    builder.build().map_err(|e| e.to_string())?;
     Ok(())
 }
+
+#[tauri::command]
+pub async fn set_mini_player_mode(app: tauri::AppHandle, mode: String) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("mini_player_window") {
+        match mode.as_str() {
+            "large" => { let _ = window.set_size(tauri::Size::Logical(tauri::LogicalSize { width: 450.0, height: 750.0 })); }
+            "medium" => { let _ = window.set_size(tauri::Size::Logical(tauri::LogicalSize { width: 320.0, height: 550.0 })); }
+            "small" => { let _ = window.set_size(tauri::Size::Logical(tauri::LogicalSize { width: 250.0, height: 250.0 })); }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn close_mini_player(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("mini_player_window") { let _ = window.close(); }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn make_window_square(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("mini_player_window") {
+        if let Ok(size) = window.outer_size() {
+            let _ = window.set_size(tauri::Size::Physical(tauri::PhysicalSize { width: size.width, height: size.width }));
+        }
+    }
+    Ok(())
+}
+
+// ==========================================
+// 設定・テーマ管理
+// ==========================================
 
 #[tauri::command]
 pub fn get_app_settings() -> AppSettings {
@@ -441,10 +492,8 @@ pub fn convert_smart_to_normal_and_remove_songs(pl_id: String, filenames: Vec<St
                 obj.insert("type".to_string(), Value::String("normal".to_string()));
                 obj.remove("conditions");
             }
-            pl_clone = Some(pl.clone());
-        }
-        if pl_clone.is_some() {
             save_playlists_master(&master);
+            pl_clone = Some(pl.clone());
         }
     }
     
@@ -576,7 +625,7 @@ pub fn delete_multiple_songs(filenames: Vec<String>, state: State<'_, AppState>)
 }
 
 // ==========================================
-// 外部ツール連携
+// 外部ツールとダウンロード
 // ==========================================
 #[tauri::command]
 pub fn check_tools_status() -> Value {
@@ -665,6 +714,53 @@ pub fn download_original_thumbnail(url: String) -> Value {
 }
 
 #[tauri::command]
+pub fn download_and_save_music(mut data: serde_json::Map<String, Value>, state: State<'_, AppState>) -> Result<bool, String> {
+    let base = get_base_dir();
+    let bin = base.join("userfiles/bin");
+    let url = data.get("video_url").and_then(|v| v.as_str()).ok_or("No URL")?.to_string();
+    let f_id: String = rng().sample_iter(&Alphanumeric).take(32).map(char::from).collect();
+    let _ = fs::create_dir_all(base.join("library/music")); let _ = fs::create_dir_all(base.join("library/images"));
+    
+    let out = std::process::Command::new(bin.join("yt-dlp.exe"))
+        .args(&["--no-playlist", "--extract-audio", "--audio-format", "mp3", "--audio-quality", "0", "-o", base.join(format!("library/music/{}.%(ext)s", f_id)).to_str().unwrap(), &url])
+        .creation_flags(0x08000000)
+        .output()
+        .map_err(|e| e.to_string())?;
+        
+    if !out.status.success() { return Err(String::from_utf8_lossy(&out.stderr).into()); }
+    
+    let mut i_rel = "library/images/default.png".to_string();
+    if let Some(art) = data.get("artwork_data").and_then(|v| v.as_str()) {
+        if !art.is_empty() {
+            let bc = if art.contains(',') { art.split(',').nth(1).unwrap() } else { art };
+            if let Ok(by) = general_purpose::STANDARD.decode(bc) {
+                let ir = format!("library/images/{}.png", f_id);
+                if force_save_as_png(&by, &base.join(&ir)) { i_rel = ir; }
+            }
+        }
+    }
+    
+    let mut db = state.db.lock().unwrap();
+    data.remove("video_url"); data.remove("artwork_data");
+    
+    if let Some(l) = data.get("lyric").and_then(|v| v.as_str()) {
+        let clean = l.replace("\r\n", "\n").replace("\r", "\n");
+        data.insert("lyric".to_string(), Value::String(clean));
+    }
+    
+    let m_rel = format!("library/music/{}.mp3", f_id);
+    data.insert("musicFilename".into(), m_rel.clone().into());
+    data.insert("streamUrl".into(), get_asset_url(&m_rel).into());
+    
+    data.insert("imageFilename".into(), i_rel.clone().into());
+    data.insert("imageData".into(), get_asset_url(&i_rel).into());
+    
+    db.push(data.clone()); 
+    let _ = save_db(&db); 
+    Ok(true)
+}
+
+#[tauri::command]
 pub fn save_music_data(mut data: serde_json::Map<String, Value>, state: State<'_, AppState>) -> Result<bool, String> {
     let base = get_base_dir();
     let _ = fs::create_dir_all(base.join("library/music"));
@@ -714,57 +810,33 @@ pub fn save_music_data(mut data: serde_json::Map<String, Value>, state: State<'_
 }
 
 #[tauri::command]
-pub fn download_and_save_music(mut data: serde_json::Map<String, Value>, state: State<'_, AppState>) -> Result<bool, String> {
-    let base = get_base_dir();
-    let bin = base.join("userfiles/bin");
-    let url = data.get("video_url").and_then(|v| v.as_str()).ok_or("No URL")?.to_string();
-    let f_id: String = rng().sample_iter(&Alphanumeric).take(32).map(char::from).collect();
-    let _ = fs::create_dir_all(base.join("library/music")); let _ = fs::create_dir_all(base.join("library/images"));
-    
-    let out = std::process::Command::new(bin.join("yt-dlp.exe"))
-        .args(&["--no-playlist", "--extract-audio", "--audio-format", "mp3", "--audio-quality", "0", "--ffmpeg-location", bin.to_str().unwrap(), "-o", base.join(format!("library/music/{}.%(ext)s", f_id)).to_str().unwrap(), &url])
-        .creation_flags(0x08000000)
-        .output()
-        .map_err(|e| e.to_string())?;
-        
-    if !out.status.success() { return Err(String::from_utf8_lossy(&out.stderr).into()); }
-    
-    let mut i_rel = "library/images/default.png".to_string();
-    if let Some(art) = data.get("artwork_data").and_then(|v| v.as_str()) {
-        if !art.is_empty() {
-            let bc = if art.contains(',') { art.split(',').nth(1).unwrap() } else { art };
-            if let Ok(by) = general_purpose::STANDARD.decode(bc) {
-                let ir = format!("library/images/{}.png", f_id);
-                if force_save_as_png(&by, &base.join(&ir)) { i_rel = ir; }
-            }
-        }
-    }
-    
-    let mut db = state.db.lock().unwrap();
-    data.remove("video_url"); data.remove("artwork_data");
-    
-    if let Some(l) = data.get("lyric").and_then(|v| v.as_str()) {
-        let clean = l.replace("\r\n", "\n").replace("\r", "\n");
-        data.insert("lyric".to_string(), Value::String(clean));
-    }
-    
-    let m_rel = format!("library/music/{}.mp3", f_id);
-    data.insert("musicFilename".into(), m_rel.clone().into());
-    data.insert("streamUrl".into(), get_asset_url(&m_rel).into());
-    
-    data.insert("imageFilename".into(), i_rel.clone().into());
-    data.insert("imageData".into(), get_asset_url(&i_rel).into());
-    
-    db.push(data.clone()); 
-    let _ = save_db(&db); 
-    Ok(true)
-}
-
-#[tauri::command]
 pub async fn search_lyrics_online(title: String, artist: String) -> Result<Value, String> {
     let url = format!("https://lrclib.net/api/search?track_name={}&artist_name={}", urlencoding::encode(&title), urlencoding::encode(&artist));
     let client = reqwest::Client::builder().user_agent("Chordia/1.0").build().map_err(|e| e.to_string())?;
     let res = client.get(url).send().await.map_err(|e| e.to_string())?;
     let json: Value = res.json().await.map_err(|e| e.to_string())?;
     Ok(json)
+}
+
+#[tauri::command]
+pub fn record_playback(song: Value) {
+    let filename = song.get("musicFilename").and_then(|v| v.as_str()).unwrap_or("").split(&['/', '\\'][..]).last().unwrap_or("").to_string();
+    if filename.is_empty() { return; }
+    let base = get_base_dir();
+    let pt_path = base.join("userfiles/played_times.json");
+    let mut pt: serde_json::Map<String, Value> = fs::read_to_string(&pt_path).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+    let count = pt.get(&filename).and_then(|v| v.as_i64()).unwrap_or(0);
+    pt.insert(filename.clone(), (count + 1).into());
+    let _ = fs::write(&pt_path, serde_json::to_string_pretty(&pt).unwrap_or_default());
+    let h_path = base.join("userfiles/history.json");
+    let mut h: Vec<Value> = fs::read_to_string(&h_path).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+    h.push(serde_json::json!({"title": song.get("title"), "artist": song.get("artist"), "filename": filename, "timestamp": Local::now().format("%Y-%m-%d %H:%M:%S").to_string()}));
+    if h.len() > 1000 { h.remove(0); }
+    let _ = fs::write(&h_path, serde_json::to_string_pretty(&h).unwrap_or_default());
+}
+
+#[tauri::command]
+pub fn get_playback_history() -> Vec<Value> {
+    let h_path = get_base_dir().join("userfiles/history.json");
+    fs::read_to_string(&h_path).ok().and_then(|d| serde_json::from_str::<Vec<Value>>(&d).ok()).map(|mut v| { v.reverse(); v }).unwrap_or_default()
 }
